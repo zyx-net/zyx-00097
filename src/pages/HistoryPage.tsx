@@ -10,9 +10,9 @@ import { ImportButton } from '../components/result/ImportButton';
 import { CaseEditDialog } from '../components/result/CaseEditDialog';
 import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR, type Difficulty, type CaseInfo } from '../types';
 import { classNames, formatTime, formatDateTime } from '../utils/uuid';
-import { computeReplayHash, loadImportLog, getAnnotationCount, loadHistoryFilters, saveHistoryFilters } from '../utils/storage';
+import { computeReplayHash, loadImportLog, loadAnnotationImportLog, loadCaseImportLog, getAnnotationCount, loadHistoryFilters, saveHistoryFilters } from '../utils/storage';
 import { downloadReplayJSON, downloadReplayTXT } from '../utils/export';
-import type { ImportLogEntry } from '../types';
+import type { ImportLogEntry, AnnotationImportLogEntry, CaseImportLogEntry } from '../types';
 
 export default function HistoryPage() {
   const navigate = useNavigate();
@@ -628,11 +628,34 @@ function FilterToggle({
   );
 }
 
+type UnifiedImportLog =
+  | { kind: 'RECORD'; entry: ImportLogEntry }
+  | { kind: 'ANNOTATION'; entry: AnnotationImportLogEntry }
+  | { kind: 'CASE'; entry: CaseImportLogEntry };
+
+const KIND_LABEL: Record<UnifiedImportLog['kind'], string> = {
+  RECORD: '记录',
+  ANNOTATION: '批注',
+  CASE: '案例',
+};
+
+const KIND_COLOR: Record<UnifiedImportLog['kind'], string> = {
+  RECORD: 'bg-slate-100 text-slate-700 border-slate-200',
+  ANNOTATION: 'bg-violet-50 text-violet-700 border-violet-200',
+  CASE: 'bg-amber-50 text-amber-700 border-amber-200',
+};
+
 function ImportLogDialog({ onClose }: { onClose: () => void }) {
-  const [logs, setLogs] = React.useState<ImportLogEntry[]>([]);
+  const [logs, setLogs] = React.useState<UnifiedImportLog[]>([]);
 
   useEffect(() => {
-    setLogs(loadImportLog());
+    const recordLogs: UnifiedImportLog[] = loadImportLog().map((e) => ({ kind: 'RECORD', entry: e }));
+    const annotationLogs: UnifiedImportLog[] = loadAnnotationImportLog().map((e) => ({ kind: 'ANNOTATION', entry: e }));
+    const caseLogs: UnifiedImportLog[] = loadCaseImportLog().map((e) => ({ kind: 'CASE', entry: e }));
+    const combined = [...recordLogs, ...annotationLogs, ...caseLogs].sort(
+      (a, b) => b.entry.timestamp - a.entry.timestamp
+    );
+    setLogs(combined);
   }, []);
 
   return (
@@ -641,7 +664,11 @@ function ImportLogDialog({ onClose }: { onClose: () => void }) {
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h3 className="font-title text-lg text-slate-900">导入日志</h3>
-            <p className="text-xs text-slate-500 mt-0.5">共 {logs.length} 条记录</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              共 {logs.length} 条 (记录 {logs.filter((l) => l.kind === 'RECORD').length} · 批注{' '}
+              {logs.filter((l) => l.kind === 'ANNOTATION').length} · 案例{' '}
+              {logs.filter((l) => l.kind === 'CASE').length})
+            </p>
           </div>
           <button onClick={onClose} className="btn-ghost p-2">
             <X size={16} />
@@ -656,66 +683,117 @@ function ImportLogDialog({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <div className="space-y-3">
-              {logs.map((log) => (
-                <div
-                  key={log.id}
-                  className={classNames(
-                    'rounded-xl border p-4',
-                    log.success ? 'border-slate-200 bg-white' : 'border-red-100 bg-red-50/30'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={classNames(
-                          'text-xs font-bold px-1.5 py-0.5 rounded',
-                          log.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                        )}>
-                          {log.success ? '✓ 成功' : '✗ 失败'}
-                        </span>
-                        <span className="text-sm font-mono text-slate-700 truncate">{log.fileName}</span>
-                      </div>
-                      <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
-                        <span>{formatDateTime(log.timestamp)}</span>
-                        {log.levelId && <span>关卡 {log.levelId}</span>}
-                        {log.recordId && <span className="font-mono text-[10px]">ID: {log.recordId.slice(0, 8)}...</span>}
-                      </div>
-
-                      {log.errors && log.errors.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          {log.errors.map((e, i) => (
-                            <div key={i} className="text-xs text-red-600">
-                              <span className="font-mono text-[10px] mr-1">[{e.code}]</span>
-                              {e.message}
-                            </div>
-                          ))}
+              {logs.map((item) => {
+                const { kind, entry } = item;
+                return (
+                  <div
+                    key={`${kind}-${entry.id}`}
+                    className={classNames(
+                      'rounded-xl border p-4',
+                      entry.success ? 'border-slate-200 bg-white' : 'border-red-100 bg-red-50/30'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={classNames(
+                            'text-xs font-bold px-1.5 py-0.5 rounded',
+                            entry.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                          )}>
+                            {entry.success ? '✓ 成功' : '✗ 失败'}
+                          </span>
+                          <span className={classNames(
+                            'text-[10px] font-bold px-1.5 py-0.5 rounded border',
+                            KIND_COLOR[kind]
+                          )}>
+                            {KIND_LABEL[kind]}
+                          </span>
+                          <span className="text-sm font-mono text-slate-700 truncate">{entry.fileName}</span>
                         </div>
-                      )}
-
-                      {log.warnings && log.warnings.length > 0 && (
-                        <div className="mt-1 space-y-1">
-                          {log.warnings.map((w, i) => (
-                            <div key={i} className="text-xs text-amber-600">
-                              <span className="font-mono text-[10px] mr-1">[{w.code}]</span>
-                              {w.message}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {log.conflictsResolved && log.conflictsResolved.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {log.conflictsResolved.map((c, i) => (
-                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
-                              {c.type}: {c.resolution}
+                        <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
+                          <span>{formatDateTime(entry.timestamp)}</span>
+                          {'levelId' in entry && entry.levelId && <span>关卡 {entry.levelId}</span>}
+                          {entry.recordId && <span className="font-mono text-[10px]">ID: {entry.recordId.slice(0, 8)}...</span>}
+                          {'localCountBefore' in entry && (
+                            <span>批注: {entry.localCountBefore} → {entry.finalCount} (导入 {entry.importedCount})</span>
+                          )}
+                          {'hasLocalCase' in entry && (
+                            <span>
+                              案例: {entry.hasLocalCase ? '本地有' : '本地无'} → {entry.finalHasCase ? '有' : '无'}
+                              {entry.importedHasCase ? ' (导入包含)' : ' (导入包不含)'}
                             </span>
-                          ))}
+                          )}
                         </div>
-                      )}
+
+                        {'errors' in entry && entry.errors && entry.errors.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {Array.isArray(entry.errors) && typeof entry.errors[0] === 'string'
+                              ? (entry.errors as string[]).map((e, i) => (
+                                  <div key={i} className="text-xs text-red-600">{e}</div>
+                                ))
+                              : (entry.errors as Array<{ code: string; message: string }>).map((e, i) => (
+                                  <div key={i} className="text-xs text-red-600">
+                                    <span className="font-mono text-[10px] mr-1">[{e.code}]</span>
+                                    {e.message}
+                                  </div>
+                                ))}
+                          </div>
+                        )}
+
+                        {'warnings' in entry && entry.warnings && entry.warnings.length > 0 && (
+                          <div className="mt-1 space-y-1">
+                            {entry.warnings.map((w, i) => (
+                              <div key={i} className="text-xs text-amber-600">
+                                <span className="font-mono text-[10px] mr-1">[{w.code}]</span>
+                                {w.message}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {'conflictsResolved' in entry && entry.conflictsResolved && entry.conflictsResolved.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {entry.conflictsResolved.map((c, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                                {c.type}: {c.resolution}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {('conflicts' in entry) && entry.conflicts && entry.conflicts.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {entry.conflicts.map((c, i) => (
+                              <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {'resolution' in entry && entry.resolution && (
+                          <div className="mt-1">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              处理策略: {entry.resolution}
+                            </span>
+                          </div>
+                        )}
+
+                        {'tagsAdded' in entry && entry.tagsAdded && entry.tagsAdded.length > 0 && (
+                          <div className="mt-1 text-[11px] text-emerald-700">
+                            +标签: {entry.tagsAdded.map((t) => `#${t}`).join(' ')}
+                          </div>
+                        )}
+                        {'tagsRemoved' in entry && entry.tagsRemoved && entry.tagsRemoved.length > 0 && (
+                          <div className="mt-0.5 text-[11px] text-rose-700">
+                            -标签: {entry.tagsRemoved.map((t) => `#${t}`).join(' ')}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

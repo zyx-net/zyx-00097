@@ -108,7 +108,24 @@ const STORAGE_KEYS = {
   CASE_IMPORT_LOG: 'triage:case-import-log',
   CASE_VERSION: 1,
   HISTORY_FILTERS: 'triage:history-filters',
+  IMPORT_LOG: 'triage:import-log',
+  ANNOTATION_IMPORT_LOG: 'triage:annotation-import-log',
 } as const;
+
+interface ImportLogEntry {
+  id: string; timestamp: number; fileName: string; success: boolean;
+  recordId?: string; levelId?: string;
+  errors?: Array<{ code: string; message: string }>;
+  warnings?: Array<{ code: string; message: string }>;
+  conflictsResolved?: Array<{ type: string; resolution: string }>;
+}
+
+interface AnnotationImportLogEntry {
+  id: string; timestamp: number; fileName: string; recordId: string; success: boolean;
+  localCountBefore: number; importedCount: number; finalCount: number;
+  resolution?: 'KEEP_LOCAL' | 'MERGE' | 'OVERWRITE_LOCAL' | 'SKIP';
+  conflicts?: string[]; errors?: string[];
+}
 
 function loadLevel(id: string): Level {
   const raw = readFileSync(join(projectRoot, `src/config/levels/${id}.json`), 'utf-8');
@@ -270,6 +287,46 @@ function appendCaseImportLog(storage: MockStorage, entry: Omit<CaseImportLogEntr
   list.unshift(full);
   storage.write(STORAGE_KEYS.CASE_IMPORT_LOG, list.slice(0, 100));
   return full;
+}
+
+function loadImportLog(storage: MockStorage): ImportLogEntry[] {
+  const arr = storage.read<ImportLogEntry[]>(STORAGE_KEYS.IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function appendImportLog(storage: MockStorage, entry: Omit<ImportLogEntry, 'id' | 'timestamp'>): ImportLogEntry {
+  const full: ImportLogEntry = { id: genUUID(), timestamp: Date.now(), ...entry };
+  const list = loadImportLog(storage);
+  list.unshift(full);
+  storage.write(STORAGE_KEYS.IMPORT_LOG, list.slice(0, 100));
+  return full;
+}
+
+function loadAnnotationImportLog(storage: MockStorage): AnnotationImportLogEntry[] {
+  const arr = storage.read<AnnotationImportLogEntry[]>(STORAGE_KEYS.ANNOTATION_IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function appendAnnotationImportLog(storage: MockStorage, entry: Omit<AnnotationImportLogEntry, 'id' | 'timestamp'>): AnnotationImportLogEntry {
+  const full: AnnotationImportLogEntry = { id: genUUID(), timestamp: Date.now(), ...entry };
+  const list = loadAnnotationImportLog(storage);
+  list.unshift(full);
+  storage.write(STORAGE_KEYS.ANNOTATION_IMPORT_LOG, list.slice(0, 100));
+  return full;
+}
+
+function loadUnifiedImportLog(storage: MockStorage): Array<{
+  kind: 'RECORD' | 'ANNOTATION' | 'CASE';
+  entry: ImportLogEntry | AnnotationImportLogEntry | CaseImportLogEntry;
+}> {
+  const recordLogs = loadImportLog(storage).map((e) => ({ kind: 'RECORD' as const, entry: e }));
+  const annotationLogs = loadAnnotationImportLog(storage).map((e) => ({ kind: 'ANNOTATION' as const, entry: e }));
+  const caseLogs = loadCaseImportLog(storage).map((e) => ({ kind: 'CASE' as const, entry: e }));
+  return [...recordLogs, ...annotationLogs, ...caseLogs].sort(
+    (a, b) => b.entry.timestamp - a.entry.timestamp
+  );
 }
 
 function detectCaseConflicts(
@@ -881,6 +938,123 @@ async function main() {
         if (!merged.recommended) throw new Error('MERGE 推荐应取 OR');
 
         deleteCase(storage, recId);
+      } };
+      try { t.run(); reportCase(report, t); } catch (e) { reportCase(report, t, e as Error); }
+    })();
+
+    // === TC12: 导入日志合并展示（有案例日志 / 三种共存 / 无日志 / 刷新后恢复）===
+    (function tc12() {
+      const t: TestCase = { name: 'TC12 日志合并链路：案例日志可见 · 三种共存 · 空 · 刷新后恢复', run: () => {
+        // --- 场景 1：仅有案例导入日志 ---
+        {
+          const storage = new MockStorage();
+          appendCaseImportLog(storage, {
+            fileName: 'only-case.json', recordId: 'rec-only-case', success: true,
+            hasLocalCase: true, importedHasCase: true, finalHasCase: true,
+            resolution: 'MERGE', conflicts: ['TAG_CONFLICT'],
+            tagsAdded: ['合并后新标签'], tagsRemoved: [],
+          });
+          const unified = loadUnifiedImportLog(storage);
+          if (unified.length !== 1) throw new Error('场景1 应有 1 条日志');
+          if (unified[0].kind !== 'CASE') throw new Error('场景1 日志 kind 应为 CASE');
+          if ((unified[0].entry as CaseImportLogEntry).fileName !== 'only-case.json') {
+            throw new Error('场景1 文件名不匹配');
+          }
+        }
+
+        // --- 场景 2：三种日志共存，按 timestamp 倒序合并 ---
+        {
+          const storage = new MockStorage();
+          const t0 = 1_700_000_000_000;
+          storage.write(STORAGE_KEYS.IMPORT_LOG, [{
+            id: 'r1', timestamp: t0 + 100, fileName: 'record-latest.json', success: true, levelId: level.id,
+            conflictsResolved: [{ type: 'DUPLICATE_RECORD', resolution: 'OVERWRITE_LOCAL' }],
+          }]);
+          storage.write(STORAGE_KEYS.ANNOTATION_IMPORT_LOG, [{
+            id: 'a1', timestamp: t0 + 50, fileName: 'ann-middle.json', recordId: 'rec-x', success: true,
+            localCountBefore: 2, importedCount: 3, finalCount: 5, resolution: 'MERGE',
+            conflicts: ['TIMESTAMP_CONFLICT'],
+          }]);
+          storage.write(STORAGE_KEYS.CASE_IMPORT_LOG, [{
+            id: 'c1', timestamp: t0, fileName: 'case-earliest.json', recordId: 'rec-x', success: true,
+            hasLocalCase: true, importedHasCase: true, finalHasCase: true, resolution: 'KEEP_LOCAL',
+            conflicts: ['TAG_CONFLICT', 'ARCHIVED_STATUS_CONFLICT'],
+            tagsAdded: ['本地优先'], tagsRemoved: ['导入多余标签'],
+          }]);
+
+          const unified = loadUnifiedImportLog(storage);
+          if (unified.length !== 3) throw new Error('场景2 应有 3 条合并日志');
+          if (unified[0].kind !== 'RECORD') throw new Error('场景2 最新日志应为 RECORD');
+          if (unified[1].kind !== 'ANNOTATION') throw new Error('场景2 中间日志应为 ANNOTATION');
+          if (unified[2].kind !== 'CASE') throw new Error('场景2 最早日志应为 CASE');
+          if ((unified[2].entry as CaseImportLogEntry).conflicts?.length !== 2) {
+            throw new Error('场景2 案例日志应包含 2 个冲突类型');
+          }
+        }
+
+        // --- 场景 3：完全没有任何日志 ---
+        {
+          const storage = new MockStorage();
+          const unified = loadUnifiedImportLog(storage);
+          if (unified.length !== 0) throw new Error('场景3 无日志时长度应为 0');
+          if (loadImportLog(storage).length !== 0) throw new Error('场景3 记录日志应为空');
+          if (loadAnnotationImportLog(storage).length !== 0) throw new Error('场景3 批注日志应为空');
+          if (loadCaseImportLog(storage).length !== 0) throw new Error('场景3 案例日志应为空');
+        }
+
+        // --- 场景 4：冲突合并后刷新页面（序列化→反序列化后依然可见）---
+        {
+          const s1 = new MockStorage();
+          const recId = 'rec-merge-refresh';
+          // 1) 创建本地案例
+          createCase(s1, recId, {
+            title: '本地案例', description: '本地描述',
+            tags: ['本地标签A', '本地标签B'], recommended: false, archived: false,
+          });
+          // 2) 模拟导入 MERGE
+          const importedCase: CaseInfo = {
+            id: 'imp-case-1', recordId: recId,
+            title: '', description: '导入描述补充',
+            tags: ['本地标签A', '导入标签C'], recommended: true, archived: false,
+            source: 'IMPORTED', createdAt: Date.now(), updatedAt: Date.now(), version: 1,
+          };
+          const merged = mergeCase(s1, recId, importedCase);
+          const tagsAdded = importedCase.tags.filter((t) => !merged.tags.includes(t) === false).length;
+          // 写入三种导入日志（记录/批注/案例），代表一次完整导入
+          appendImportLog(s1, {
+            fileName: 'roundtrip-bundle.json', success: true,
+            recordId: recId, levelId: level.id,
+          });
+          appendAnnotationImportLog(s1, {
+            fileName: 'roundtrip-bundle.json', recordId: recId, success: true,
+            localCountBefore: 0, importedCount: 2, finalCount: 2, resolution: 'OVERWRITE_LOCAL',
+          });
+          appendCaseImportLog(s1, {
+            fileName: 'roundtrip-bundle.json', recordId: recId, success: true,
+            hasLocalCase: true, importedHasCase: true, finalHasCase: true,
+            resolution: 'MERGE', conflicts: ['TAG_CONFLICT'],
+            tagsAdded: ['导入标签C'], tagsRemoved: [],
+          });
+
+          const snapshot = s1.serialize();
+          const s2 = new MockStorage();
+          s2.deserialize(snapshot);
+
+          const unified = loadUnifiedImportLog(s2);
+          if (unified.length !== 3) throw new Error('场景4 刷新后应有 3 条日志');
+          if (unified.filter((u) => u.kind === 'CASE').length !== 1) {
+            throw new Error('场景4 刷新后应包含 1 条案例日志');
+          }
+          const caseLog = unified.find((u) => u.kind === 'CASE')!.entry as CaseImportLogEntry;
+          if (caseLog.resolution !== 'MERGE') throw new Error('场景4 案例日志策略应为 MERGE');
+          if (!caseLog.tagsAdded?.includes('导入标签C')) throw new Error('场景4 案例日志应记录 +导入标签C');
+          const restoredCase = loadCase(s2, recId);
+          if (!restoredCase) throw new Error('场景4 刷新后案例丢失');
+          if (!restoredCase.tags.includes('导入标签C')) throw new Error('场景4 刷新后合并标签丢失');
+          if (restoredCase.title !== '本地案例') throw new Error('场景4 刷新后本地标题应保留');
+          if (!restoredCase.recommended) throw new Error('场景4 刷新后推荐状态取 OR 丢失');
+          void tagsAdded;
+        }
       } };
       try { t.run(); reportCase(report, t); } catch (e) { reportCase(report, t, e as Error); }
     })();
