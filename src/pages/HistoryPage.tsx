@@ -1,20 +1,22 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock } from 'lucide-react';
+import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock, Download, FileText, ScrollText, X } from 'lucide-react';
 import { useHistoryStore } from '../store/historyStore';
 import { useConfigStore } from '../store/configStore';
 import { Timeline } from '../components/result/Timeline';
 import { ErrorTable } from '../components/result/ErrorTable';
-import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR } from '../types';
+import { ImportButton } from '../components/result/ImportButton';
+import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR, type Difficulty } from '../types';
 import { classNames, formatTime, formatDateTime } from '../utils/uuid';
-import { computeReplayHash } from '../utils/storage';
-import { downloadReplayTXT } from '../utils/export';
+import { computeReplayHash, loadImportLog } from '../utils/storage';
+import { downloadReplayJSON, downloadReplayTXT } from '../utils/export';
+import type { ImportLogEntry } from '../types';
 
 export default function HistoryPage() {
   const navigate = useNavigate();
   const { records, filterLevelId, filterDifficulty, searchKeyword, expandedRecordId,
     setFilterLevel, setFilterDifficulty, setSearch, setExpanded, getRecord, refresh, clearAll } = useHistoryStore();
-  const { levels, init } = useConfigStore();
+  const { levels, init, getLevel } = useConfigStore();
 
   useEffect(() => {
     init();
@@ -22,6 +24,7 @@ export default function HistoryPage() {
   }, [init, refresh]);
 
   const [showClearConfirm, setShowClearConfirm] = React.useState(false);
+  const [showImportLog, setShowImportLog] = React.useState(false);
 
   const filtered = React.useMemo(() => {
     return records.filter((r) => {
@@ -55,11 +58,23 @@ export default function HistoryPage() {
               <p className="text-sm text-slate-500">共 {records.length} 条训练记录</p>
             </div>
           </div>
-          {records.length > 0 && (
-            <button onClick={() => setShowClearConfirm(true)} className="btn-soft-red">
-              <Trash2 size={14} /> 清空所有
+          <div className="flex items-center gap-2">
+            <ImportButton
+              getLevel={getLevel}
+              getRecord={getRecord}
+              onAnyChange={() => refresh()}
+              variant="accent"
+              size="sm"
+            />
+            <button onClick={() => setShowImportLog(true)} className="btn-ghost text-sm">
+              <ScrollText size={14} /> 导入日志
             </button>
-          )}
+            {records.length > 0 && (
+              <button onClick={() => setShowClearConfirm(true)} className="btn-soft-red">
+                <Trash2 size={14} /> 清空所有
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="card p-4 mb-5 grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -85,7 +100,7 @@ export default function HistoryPage() {
           </select>
           <select
             value={filterDifficulty ?? ''}
-            onChange={(e) => setFilterDifficulty((e.target.value as any) || null)}
+            onChange={(e) => setFilterDifficulty((e.target.value as Difficulty || null))}
             className="input"
           >
             <option value="">全部难度</option>
@@ -103,9 +118,18 @@ export default function HistoryPage() {
             <Activity size={40} className="mx-auto mb-3 text-slate-300" />
             <div className="text-slate-500 mb-1">暂无训练记录</div>
             <p className="text-xs text-slate-400 mb-4">完成至少一局训练后，成绩将保存在这里</p>
-            <button onClick={() => navigate('/')} className="btn-primary">
-              开始训练
-            </button>
+            <div className="flex items-center justify-center gap-3">
+              <button onClick={() => navigate('/')} className="btn-primary">
+                开始训练
+              </button>
+              <ImportButton
+                getLevel={getLevel}
+                getRecord={getRecord}
+                onAnyChange={() => refresh()}
+                variant="ghost"
+                size="md"
+              />
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -133,6 +157,11 @@ export default function HistoryPage() {
                           <span className="chip bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">已完成</span>
                         ) : (
                           <span className="chip bg-slate-100 text-slate-600 border-slate-200 text-[10px]">未完成</span>
+                        )}
+                        {r.imported && (
+                          <span className="chip bg-sky-50 text-sky-700 border-sky-200 text-[10px]">
+                            <Download size={10} className="inline mr-0.5" />已导入
+                          </span>
                         )}
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
@@ -177,8 +206,22 @@ export default function HistoryPage() {
                         <div className="text-xs text-slate-500">
                           关卡 v{expandedRecord.levelVersion} · 校验码{' '}
                           <span className="font-mono">{computeReplayHash(expandedRecord.scoreSnapshot)}</span>
+                          {expandedRecord.imported && expandedRecord.importedAt && (
+                            <span className="ml-2 text-sky-600">
+                              · 导入于 {formatDateTime(expandedRecord.importedAt)}
+                            </span>
+                          )}
                         </div>
                         <div className="flex gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              downloadReplayJSON(expandedLevel, expandedRecord);
+                            }}
+                            className="btn-ghost text-xs"
+                          >
+                            <FileText size={12} /> 导出 JSON
+                          </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -250,6 +293,104 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+
+      {showImportLog && <ImportLogDialog onClose={() => setShowImportLog(false)} />}
+    </div>
+  );
+}
+
+function ImportLogDialog({ onClose }: { onClose: () => void }) {
+  const [logs, setLogs] = React.useState<ImportLogEntry[]>([]);
+
+  useEffect(() => {
+    setLogs(loadImportLog());
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="card p-0 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <div>
+            <h3 className="font-title text-lg text-slate-900">导入日志</h3>
+            <p className="text-xs text-slate-500 mt-0.5">共 {logs.length} 条记录</p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-2">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-5">
+          {logs.length === 0 ? (
+            <div className="text-center py-8 text-slate-400">
+              <ScrollText size={32} className="mx-auto mb-2 opacity-50" />
+              <div className="text-sm">暂无导入记录</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {logs.map((log) => (
+                <div
+                  key={log.id}
+                  className={classNames(
+                    'rounded-xl border p-4',
+                    log.success ? 'border-slate-200 bg-white' : 'border-red-100 bg-red-50/30'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={classNames(
+                          'text-xs font-bold px-1.5 py-0.5 rounded',
+                          log.success ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                        )}>
+                          {log.success ? '✓ 成功' : '✗ 失败'}
+                        </span>
+                        <span className="text-sm font-mono text-slate-700 truncate">{log.fileName}</span>
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
+                        <span>{formatDateTime(log.timestamp)}</span>
+                        {log.levelId && <span>关卡 {log.levelId}</span>}
+                        {log.recordId && <span className="font-mono text-[10px]">ID: {log.recordId.slice(0, 8)}...</span>}
+                      </div>
+
+                      {log.errors && log.errors.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {log.errors.map((e, i) => (
+                            <div key={i} className="text-xs text-red-600">
+                              <span className="font-mono text-[10px] mr-1">[{e.code}]</span>
+                              {e.message}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {log.warnings && log.warnings.length > 0 && (
+                        <div className="mt-1 space-y-1">
+                          {log.warnings.map((w, i) => (
+                            <div key={i} className="text-xs text-amber-600">
+                              <span className="font-mono text-[10px] mr-1">[{w.code}]</span>
+                              {w.message}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {log.conflictsResolved && log.conflictsResolved.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {log.conflictsResolved.map((c, i) => (
+                            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-200">
+                              {c.type}: {c.resolution}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

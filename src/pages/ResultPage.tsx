@@ -10,6 +10,7 @@ import { Timeline } from '../components/result/Timeline';
 import { ExportButtons } from '../components/result/ExportButtons';
 import { WarningBanner } from '../components/layout/Toasts';
 import { formatTime } from '../utils/uuid';
+import { isRecordReadonly } from '../utils/storage';
 import type { GameRecord, Level } from '../types';
 
 export default function ResultPage() {
@@ -26,6 +27,8 @@ export default function ResultPage() {
   const [record, setRecord] = React.useState<GameRecord | null>(null);
   const [level, setLevel] = React.useState<Level | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  const isReadonly = record ? (record.imported || isRecordReadonly(record.id)) : false;
 
   useEffect(() => {
     init();
@@ -115,11 +118,19 @@ export default function ResultPage() {
     <div className="min-h-screen px-4 py-6 md:py-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 text-center">
-          <h1 className="font-title text-2xl md:text-3xl text-slate-900 mb-1">训练完成</h1>
+          <h1 className="font-title text-2xl md:text-3xl text-slate-900 mb-1">
+            {isReadonly ? '复盘查看' : '训练完成'}
+          </h1>
           <p className="text-slate-500 text-sm">
             {level.name} · v{level.version} · 用时 {formatTime(usedSeconds)} / 限时{' '}
             {formatTime(level.timeLimitSeconds)}
           </p>
+          {isReadonly && (
+            <p className="text-xs text-sky-600 mt-1">
+              {record.imported ? `导入记录 · 只读模式` : `只读复盘模式`}
+              {record.importedAt ? ` · 导入于 ${new Date(record.importedAt).toLocaleString()}` : ''}
+            </p>
+          )}
         </div>
 
         {overtime && (
@@ -143,7 +154,19 @@ export default function ResultPage() {
                 </div>
               </div>
             </div>
-            <ExportButtons level={level} record={record} onReplay={handleReplay} />
+            <ExportButtons
+              level={level}
+              record={record}
+              onReplay={handleReplay}
+              getLevel={getLevel}
+              getRecord={getRecord}
+              onImported={(r) => {
+                refresh();
+                setRecord(r);
+              }}
+              onAnyChange={() => refresh()}
+              readonly={isReadonly}
+            />
           </div>
 
           <div className="lg:col-span-2 space-y-5">

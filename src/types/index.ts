@@ -201,6 +201,10 @@ export interface GameRecord {
   createdAt: number;
   sessionSnapshot: GameSession;
   scoreSnapshot: ScoreResult;
+  imported?: boolean;
+  importedAt?: number;
+  replayHash?: string;
+  originalExportVersion?: number;
 }
 
 export interface InProgressSave {
@@ -210,13 +214,101 @@ export interface InProgressSave {
   levelId: string;
 }
 
+export type ConflictType =
+  | 'DUPLICATE_ID'
+  | 'LEVEL_VERSION_MISMATCH'
+  | 'MISSING_FIELDS_LEGACY';
+
+export interface ConflictInfo {
+  type: ConflictType;
+  title: string;
+  description: string;
+  localRecord?: GameRecord;
+  importedLevelVersion?: string;
+  localLevelVersion?: string;
+  missingFields?: string[];
+}
+
+export type ConflictResolution =
+  | 'SKIP'
+  | 'OVERWRITE'
+  | 'KEEP_BOTH'
+  | 'IMPORT_AS_IS';
+
+export interface ImportValidationResult {
+  ok: boolean;
+  replayPackage?: ReplayPackage;
+  normalizedRecord?: GameRecord;
+  conflicts?: ConflictInfo[];
+  errors?: ImportError[];
+  warnings?: ImportWarning[];
+}
+
+export interface ImportError {
+  code: string;
+  message: string;
+  suggestion?: string;
+  field?: string;
+}
+
+export interface ImportWarning {
+  code: string;
+  message: string;
+}
+
+export interface ReplayPackageLevelInfo {
+  id: string;
+  name: string;
+  version: string;
+  difficulty: Difficulty;
+  scoringRules?: ScoringRules;
+  patients?: Patient[];
+  resourceSlots?: ResourceSlot[];
+}
+
+export interface ReplayPackageRecordInfo {
+  id: string;
+  createdAt: string | number;
+  totalScore: number;
+  maxScore: number;
+  accuracy: number;
+  usedSeconds: number;
+  completed: boolean;
+}
+
+export interface ReplayPackage {
+  exportVersion: number;
+  exportedAt: string | number;
+  replayHash?: string;
+  level: ReplayPackageLevelInfo;
+  record: ReplayPackageRecordInfo;
+  session: GameSession;
+  scoreResult: ScoreResult;
+}
+
+export interface ImportLogEntry {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  success: boolean;
+  recordId?: string;
+  levelId?: string;
+  errors?: ImportError[];
+  warnings?: ImportWarning[];
+  conflictsResolved?: { type: ConflictType; resolution: ConflictResolution }[];
+}
+
 export const STORAGE_KEYS = {
   IN_PROGRESS: 'triage:in-progress',
   HISTORY: 'triage:history',
+  IMPORT_LOG: 'triage:import-log',
+  READONLY_RECORDS: 'triage:readonly-records',
   STORAGE_VERSION: 1,
 } as const;
 
 export const MAX_HISTORY = 200;
+export const MAX_IMPORT_LOG = 100;
+export const SUPPORTED_EXPORT_VERSIONS = [1] as const;
 
 export const ERROR_CODES = {
   E_PAUSED_LOCKED: 'E_PAUSED_LOCKED',

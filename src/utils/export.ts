@@ -1,4 +1,4 @@
-import type { GameRecord, GameSession, Level, ScoreResult } from '../types';
+import type { GameRecord, Level, ScoreResult } from '../types';
 import { CHANNEL_LABEL, DIFFICULTY_LABEL } from '../types';
 import { formatDateTime, formatTime } from './uuid';
 import { computeReplayHash } from './storage';
@@ -28,7 +28,10 @@ export function exportReplayJSON(
       name: level.name,
       version: level.version,
       difficulty: level.difficulty,
+      timeLimitSeconds: level.timeLimitSeconds,
       scoringRules: level.scoringRules,
+      patients: level.patients,
+      resourceSlots: level.resourceSlots,
     },
     record: {
       id: record.id,

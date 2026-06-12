@@ -5,14 +5,20 @@ import { downloadReplayJSON, downloadReplayTXT, downloadScoreResultAsCSV } from 
 import { calculateScore } from '../../utils/scoring';
 import { computeReplayHash } from '../../utils/storage';
 import { useNavigate } from 'react-router-dom';
+import { ImportButton } from './ImportButton';
 
 interface ExportButtonsProps {
   level: Level;
   record: GameRecord;
   onReplay?: () => void;
+  getLevel?: (id: string) => Level | null;
+  getRecord?: (id: string) => GameRecord | null;
+  onImported?: (r: GameRecord) => void;
+  onAnyChange?: () => void;
+  readonly?: boolean;
 }
 
-export function ExportButtons({ level, record, onReplay }: ExportButtonsProps) {
+export function ExportButtons({ level, record, onReplay, getLevel, getRecord, onImported, onAnyChange, readonly }: ExportButtonsProps) {
   const navigate = useNavigate();
   const [recalcResult, setRecalcResult] = React.useState<string | null>(null);
 
@@ -57,6 +63,19 @@ export function ExportButtons({ level, record, onReplay }: ExportButtonsProps) {
           </button>
         </div>
 
+        {getLevel && getRecord && (
+          <div className="pt-2 border-t border-slate-100">
+            <ImportButton
+              getLevel={getLevel}
+              getRecord={getRecord}
+              onImported={onImported}
+              onAnyChange={onAnyChange}
+              variant="accent"
+              size="sm"
+            />
+          </div>
+        )}
+
         {recalcResult && (
           <div
             className={
@@ -74,12 +93,18 @@ export function ExportButtons({ level, record, onReplay }: ExportButtonsProps) {
           <button onClick={() => navigate('/')} className="btn-ghost">
             <Home size={14} /> 首页
           </button>
-          <button
-            onClick={onReplay}
-            className="btn-accent"
-          >
-            <RotateCcw size={14} /> 重玩
-          </button>
+          {readonly ? (
+            <button onClick={() => navigate('/history')} className="btn-accent">
+              历史
+            </button>
+          ) : (
+            <button
+              onClick={onReplay}
+              className="btn-accent"
+            >
+              <RotateCcw size={14} /> 重玩
+            </button>
+          )}
           <button
             onClick={() => navigate('/history')}
             className="btn-ghost"

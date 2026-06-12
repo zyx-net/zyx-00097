@@ -4,8 +4,10 @@ import type {
   InProgressSave,
   ScoreResult,
   ResourceAssignment,
+  ImportLogEntry,
 } from '../types';
-import { STORAGE_KEYS, MAX_HISTORY } from '../types';
+import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG } from '../types';
+import { generateUUID } from './uuid';
 
 const read = <T>(key: string, fallback: T): T => {
   try {
@@ -26,7 +28,7 @@ const write = <T>(key: string, value: T) => {
   }
 };
 
-function normalizeSession(s: GameSession): GameSession {
+export function normalizeSession(s: GameSession): GameSession {
   const legacy = !Array.isArray(s.resourceAssignments);
   return {
     ...s,
@@ -75,8 +77,37 @@ export function appendHistory(record: GameRecord): GameRecord[] {
   return trimmed;
 }
 
+export function upsertHistory(record: GameRecord, mode: 'insert' | 'overwrite' = 'insert'): GameRecord[] {
+  const list = loadHistory();
+  const idx = list.findIndex((r) => r.id === record.id);
+  if (idx >= 0) {
+    if (mode === 'overwrite') {
+      list[idx] = record;
+    } else {
+      list.unshift(record);
+    }
+  } else {
+    list.unshift(record);
+  }
+  const trimmed = list.slice(0, MAX_HISTORY);
+  write(STORAGE_KEYS.HISTORY, trimmed);
+  return trimmed;
+}
+
+export function deleteHistoryRecord(id: string): GameRecord[] {
+  const list = loadHistory().filter((r) => r.id !== id);
+  write(STORAGE_KEYS.HISTORY, list);
+  const readonly = loadReadonlyRecords();
+  const newReadonly = readonly.filter((x) => x !== id);
+  if (newReadonly.length !== readonly.length) {
+    write(STORAGE_KEYS.READONLY_RECORDS, newReadonly);
+  }
+  return list;
+}
+
 export function clearHistory() {
   localStorage.removeItem(STORAGE_KEYS.HISTORY);
+  localStorage.removeItem(STORAGE_KEYS.READONLY_RECORDS);
 }
 
 export function getBestScore(levelId: string): { score: number; accuracy: number } | null {
@@ -88,6 +119,55 @@ export function getBestScore(levelId: string): { score: number; accuracy: number
 
 export function getHistoryById(id: string): GameRecord | null {
   return loadHistory().find((r) => r.id === id) ?? null;
+}
+
+export function loadImportLog(): ImportLogEntry[] {
+  const arr = read<ImportLogEntry[]>(STORAGE_KEYS.IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function appendImportLog(entry: Omit<ImportLogEntry, 'id' | 'timestamp'>): ImportLogEntry {
+  const full: ImportLogEntry = {
+    id: generateUUID(),
+    timestamp: Date.now(),
+    ...entry,
+  };
+  const list = loadImportLog();
+  list.unshift(full);
+  const trimmed = list.slice(0, MAX_IMPORT_LOG);
+  write(STORAGE_KEYS.IMPORT_LOG, trimmed);
+  return full;
+}
+
+export function clearImportLog() {
+  localStorage.removeItem(STORAGE_KEYS.IMPORT_LOG);
+}
+
+export function loadReadonlyRecords(): string[] {
+  const arr = read<string[]>(STORAGE_KEYS.READONLY_RECORDS, []);
+  return Array.isArray(arr) ? arr : [];
+}
+
+export function markRecordReadonly(recordId: string): void {
+  const list = loadReadonlyRecords();
+  if (!list.includes(recordId)) {
+    list.push(recordId);
+    write(STORAGE_KEYS.READONLY_RECORDS, list);
+  }
+}
+
+export function isRecordReadonly(recordId: string): boolean {
+  return loadReadonlyRecords().includes(recordId);
+}
+
+export function syncReadonlyFromHistory(): void {
+  const importedIds = loadHistory()
+    .filter((r) => r.imported || r.sessionSnapshot?.status === 'ENDED' || r.sessionSnapshot?.status === 'ABANDONED')
+    .map((r) => r.id);
+  const existing = new Set(loadReadonlyRecords());
+  for (const id of importedIds) existing.add(id);
+  write(STORAGE_KEYS.READONLY_RECORDS, [...existing]);
 }
 
 export interface ResumeAdjustment {
