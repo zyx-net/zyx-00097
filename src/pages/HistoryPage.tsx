@@ -105,10 +105,10 @@ export default function HistoryPage() {
         const caseInfo = caseMap[r.id];
         if (filterArchived !== !!(caseInfo?.archived)) return false;
       }
-      if (filterReviewStatus && filterReviewStatus !== 'ALL') {
+      if (filterReviewStatus !== null) {
         const reviewItem = itemMap[r.id];
         if (!reviewItem) return false;
-        if (reviewItem.status !== filterReviewStatus) return false;
+        if (filterReviewStatus !== 'ALL' && reviewItem.status !== filterReviewStatus) return false;
       }
       return true;
     });

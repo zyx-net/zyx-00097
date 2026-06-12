@@ -833,6 +833,121 @@ async function main() {
       try { t.run(); reportCase(report, t); } catch (e) { reportCase(report, t, e as Error); }
     })();
 
+    // === TC10: 筛选逻辑——"仅清单内"不漏入非清单记录 ===
+    (function tc10() {
+      const t: TestCase = { name: 'TC10 筛选逻辑："仅清单内"只显示清单记录，待讲/已讲正确，跨重启恢复', run: () => {
+        const recordIds = ['rec-filter-a', 'rec-filter-b', 'rec-filter-c', 'rec-filter-d', 'rec-filter-e'];
+        const itemMap: Record<string, ReviewListItem> = {};
+
+        // rec-filter-a: 清单内 PENDING
+        createReviewItem(storage, 'rec-filter-a', {
+          status: 'PENDING', priority: 'HIGH', assignee: '教练A', remark: '待讲记录',
+        });
+        itemMap['rec-filter-a'] = loadReviewItem(storage, 'rec-filter-a')!;
+
+        // rec-filter-b: 清单内 REVIEWED
+        createReviewItem(storage, 'rec-filter-b', {
+          status: 'REVIEWED', priority: 'MEDIUM', assignee: '教练B', remark: '已讲记录',
+        });
+        itemMap['rec-filter-b'] = loadReviewItem(storage, 'rec-filter-b')!;
+
+        // rec-filter-c: 清单内 PENDING（低优先级）
+        createReviewItem(storage, 'rec-filter-c', {
+          status: 'PENDING', priority: 'LOW', assignee: '', remark: '',
+        });
+        itemMap['rec-filter-c'] = loadReviewItem(storage, 'rec-filter-c')!;
+
+        // rec-filter-d, rec-filter-e: 不在清单内
+
+        // 镜像 HistoryPage 的筛选逻辑
+        function filterRecords(ids: string[], filterReviewStatus: ReviewStatus | 'ALL' | null): string[] {
+          return ids.filter((id) => {
+            if (filterReviewStatus !== null) {
+              const reviewItem = itemMap[id] ?? null;
+              if (!reviewItem) return false;
+              if (filterReviewStatus !== 'ALL' && reviewItem.status !== filterReviewStatus) return false;
+            }
+            return true;
+          });
+        }
+
+        // null (全部) → 5 条记录全部显示
+        const allResult = filterRecords(recordIds, null);
+        assertEqual(allResult.length, 5, 'filterReviewStatus=null 应显示全部 5 条');
+        assertTrue(allResult.includes('rec-filter-d'), '全部筛选应包含非清单记录 d');
+        assertTrue(allResult.includes('rec-filter-e'), '全部筛选应包含非清单记录 e');
+
+        // 'ALL' (仅清单内) → 只显示清单内 3 条
+        const inListResult = filterRecords(recordIds, 'ALL');
+        assertEqual(inListResult.length, 3, 'filterReviewStatus=ALL 应只显示清单内 3 条');
+        assertTrue(inListResult.includes('rec-filter-a'), '仅清单内应包含 a');
+        assertTrue(inListResult.includes('rec-filter-b'), '仅清单内应包含 b');
+        assertTrue(inListResult.includes('rec-filter-c'), '仅清单内应包含 c');
+        assertFalse(inListResult.includes('rec-filter-d'), '仅清单内不应包含非清单记录 d');
+        assertFalse(inListResult.includes('rec-filter-e'), '仅清单内不应包含非清单记录 e');
+
+        // 'PENDING' → 只显示待讲 2 条
+        const pendingResult = filterRecords(recordIds, 'PENDING');
+        assertEqual(pendingResult.length, 2, 'filterReviewStatus=PENDING 应只显示待讲 2 条');
+        assertTrue(pendingResult.includes('rec-filter-a'), '待讲应包含 a');
+        assertTrue(pendingResult.includes('rec-filter-c'), '待讲应包含 c');
+        assertFalse(pendingResult.includes('rec-filter-b'), '待讲不应包含已讲 b');
+        assertFalse(pendingResult.includes('rec-filter-d'), '待讲不应包含非清单记录 d');
+
+        // 'REVIEWED' → 只显示已讲 1 条
+        const reviewedResult = filterRecords(recordIds, 'REVIEWED');
+        assertEqual(reviewedResult.length, 1, 'filterReviewStatus=REVIEWED 应只显示已讲 1 条');
+        assertTrue(reviewedResult.includes('rec-filter-b'), '已讲应包含 b');
+        assertFalse(reviewedResult.includes('rec-filter-a'), '已讲不应包含待讲 a');
+        assertFalse(reviewedResult.includes('rec-filter-d'), '已讲不应包含非清单记录 d');
+
+        // 跨重启恢复：保存 filterReviewStatus='ALL' 后序列化/反序列化，验证筛选逻辑仍然正确
+        saveHistoryFilters(storage, {
+          filterLevelId: null, filterDifficulty: null, searchKeyword: '',
+          filterTags: [], filterHasAnnotations: null, filterImported: null,
+          filterRecommended: null, filterArchived: null, filterReviewStatus: 'ALL',
+        });
+        const restoredStorage = new MockStorage();
+        restoredStorage.deserialize(storage.serialize());
+
+        const restoredFilters = loadHistoryFilters(restoredStorage);
+        assertEqual(restoredFilters.filterReviewStatus, 'ALL', '恢复后 filterReviewStatus 应为 ALL');
+
+        const restoredItems: Record<string, ReviewListItem> = {};
+        for (const rid of recordIds) {
+          const item = loadReviewItem(restoredStorage, rid);
+          if (item) restoredItems[rid] = item;
+        }
+
+        function filterRestored(ids: string[], fStatus: ReviewStatus | 'ALL' | null): string[] {
+          return ids.filter((id) => {
+            if (fStatus !== null) {
+              const reviewItem = restoredItems[id] ?? null;
+              if (!reviewItem) return false;
+              if (fStatus !== 'ALL' && reviewItem.status !== fStatus) return false;
+            }
+            return true;
+          });
+        }
+
+        const restoredAllResult = filterRestored(recordIds, 'ALL');
+        assertEqual(restoredAllResult.length, 3, '恢复后仅清单内仍应为 3 条');
+        assertFalse(restoredAllResult.includes('rec-filter-d'), '恢复后非清单记录 d 仍不应出现');
+
+        const restoredPendingResult = filterRestored(recordIds, 'PENDING');
+        assertEqual(restoredPendingResult.length, 2, '恢复后待讲仍应为 2 条');
+
+        const restoredReviewedResult = filterRestored(recordIds, 'REVIEWED');
+        assertEqual(restoredReviewedResult.length, 1, '恢复后已讲仍应为 1 条');
+
+        // 清理
+        for (const rid of ['rec-filter-a', 'rec-filter-b', 'rec-filter-c']) {
+          deleteReviewItem(storage, rid);
+        }
+      } };
+      try { t.run(); reportCase(report, t); } catch (e) { reportCase(report, t, e as Error); }
+    })();
+
     // === 汇总报告 ===
     console.log('\n' + '='.repeat(70));
     console.log('  待讲清单回归测试报告');
