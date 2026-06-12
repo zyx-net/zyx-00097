@@ -284,6 +284,22 @@ export interface ReplayPackage {
   record: ReplayPackageRecordInfo;
   session: GameSession;
   scoreResult: ScoreResult;
+  annotations?: CoachAnnotation[];
+  annotationVersion?: number;
+}
+
+export interface AnnotationImportLogEntry {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  recordId: string;
+  success: boolean;
+  localCountBefore: number;
+  importedCount: number;
+  finalCount: number;
+  resolution?: AnnotationConflictResolution;
+  conflicts?: string[];
+  errors?: string[];
 }
 
 export interface ImportLogEntry {
@@ -298,17 +314,83 @@ export interface ImportLogEntry {
   conflictsResolved?: { type: ConflictType; resolution: ConflictResolution }[];
 }
 
+export type AnnotationSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export const ANNOTATION_SEVERITY_LABEL: Record<AnnotationSeverity, string> = {
+  LOW: '轻微',
+  MEDIUM: '一般',
+  HIGH: '严重',
+  CRITICAL: '致命',
+};
+
+export const ANNOTATION_SEVERITY_COLOR: Record<AnnotationSeverity, { bg: string; border: string; text: string; dot: string }> = {
+  LOW: { bg: 'bg-emerald-50', border: 'border-emerald-300', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+  MEDIUM: { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-700', dot: 'bg-amber-500' },
+  HIGH: { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-700', dot: 'bg-orange-500' },
+  CRITICAL: { bg: 'bg-red-50', border: 'border-red-400', text: 'text-red-700', dot: 'bg-red-600' },
+};
+
+export type AnnotationTargetType = 'TIMESTAMP' | 'PATIENT' | 'GLOBAL';
+
+export interface CoachAnnotation {
+  id: string;
+  recordId: string;
+  targetType: AnnotationTargetType;
+  timestampMs?: number;
+  patientId?: string;
+  severity: AnnotationSeverity;
+  content: string;
+  suggestion: string;
+  createdAt: number;
+  updatedAt: number;
+  version: number;
+  source: 'LOCAL' | 'IMPORTED';
+}
+
+export interface AnnotationStore {
+  version: number;
+  annotations: Record<string, CoachAnnotation[]>;
+  exportMeta?: {
+    lastExportedAt?: number;
+    exportVersion?: number;
+  };
+}
+
+export interface AnnotationConflict {
+  type: 'DUPLICATE_ANNOTATION' | 'ANNOTATION_VERSION_DIFF' | 'TIMESTAMP_CONFLICT' | 'HAS_LOCAL_ANNOTATIONS';
+  title: string;
+  description: string;
+  localAnnotations?: CoachAnnotation[];
+  importedAnnotations?: CoachAnnotation[];
+  annotationVersionLocal?: number;
+  annotationVersionImported?: number;
+}
+
+export type AnnotationConflictResolution = 'KEEP_LOCAL' | 'MERGE' | 'OVERWRITE_LOCAL' | 'SKIP';
+
+export interface AnnotationImportResult {
+  annotations: CoachAnnotation[];
+  conflicts: AnnotationConflict[];
+  log: { action: string; detail: string; timestamp: number }[];
+}
+
 export const STORAGE_KEYS = {
   IN_PROGRESS: 'triage:in-progress',
   HISTORY: 'triage:history',
   IMPORT_LOG: 'triage:import-log',
   READONLY_RECORDS: 'triage:readonly-records',
+  ANNOTATIONS: 'triage:annotations',
+  ANNOTATION_IMPORT_LOG: 'triage:annotation-import-log',
   STORAGE_VERSION: 1,
+  ANNOTATION_VERSION: 1,
 } as const;
 
 export const MAX_HISTORY = 200;
 export const MAX_IMPORT_LOG = 100;
-export const SUPPORTED_EXPORT_VERSIONS = [1] as const;
+export const MAX_ANNOTATION_IMPORT_LOG = 100;
+export const SUPPORTED_EXPORT_VERSIONS = [1, 2] as const;
+export const CURRENT_EXPORT_VERSION = 2 as const;
+export const ANNOTATION_VERSION_CURRENT = 1 as const;
 
 export const ERROR_CODES = {
   E_PAUSED_LOCKED: 'E_PAUSED_LOCKED',

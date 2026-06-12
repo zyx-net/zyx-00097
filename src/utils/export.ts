@@ -1,7 +1,7 @@
-import type { GameRecord, Level, ScoreResult } from '../types';
-import { CHANNEL_LABEL, DIFFICULTY_LABEL } from '../types';
+import type { GameRecord, Level, ScoreResult, CoachAnnotation } from '../types';
+import { CHANNEL_LABEL, DIFFICULTY_LABEL, ANNOTATION_SEVERITY_LABEL, CURRENT_EXPORT_VERSION, ANNOTATION_VERSION_CURRENT } from '../types';
 import { formatDateTime, formatTime } from './uuid';
-import { computeReplayHash } from './storage';
+import { computeReplayHash, loadAnnotations } from './storage';
 
 function downloadText(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime });
@@ -19,8 +19,9 @@ export function exportReplayJSON(
   level: Level,
   record: GameRecord
 ): string {
+  const annotations = loadAnnotations(record.id);
   const payload = {
-    exportVersion: 1,
+    exportVersion: CURRENT_EXPORT_VERSION,
     exportedAt: formatDateTime(Date.now()),
     replayHash: computeReplayHash(record.scoreSnapshot),
     level: {
@@ -44,6 +45,7 @@ export function exportReplayJSON(
     },
     session: record.sessionSnapshot,
     scoreResult: record.scoreSnapshot,
+    ...(annotations.length > 0 ? { annotations, annotationVersion: ANNOTATION_VERSION_CURRENT } : {}),
   };
   return JSON.stringify(payload, null, 2);
 }
@@ -126,6 +128,24 @@ export function exportReplayTXT(
     for (const e of s.errors) {
       const t = formatTime(Math.floor((e.timestamp - s.startTime) / 1000));
       lines.push(`[${t}] ${e.code}: ${e.message} → 建议：${e.suggestion}`);
+    }
+  }
+  const annotations = loadAnnotations(record.id);
+  if (annotations.length > 0) {
+    lines.push('');
+    lines.push('---------- 教练批注 ----------');
+    lines.push(`（共 ${annotations.length} 条，仅用于复盘，不影响原始评分和校验码）`);
+    lines.push('');
+    for (const ann of annotations) {
+      const target = ann.targetType === 'TIMESTAMP'
+        ? `时间点 ${formatTime(Math.floor((ann.timestampMs! - s.startTime) / 1000))}`
+        : ann.targetType === 'PATIENT'
+          ? `患者 ${ann.patientId}`
+          : '全局';
+      lines.push(`[${target}] [${ANNOTATION_SEVERITY_LABEL[ann.severity]}] ${ann.content}`);
+      if (ann.suggestion) {
+        lines.push(`  → 处理建议：${ann.suggestion}`);
+      }
     }
   }
   lines.push('');

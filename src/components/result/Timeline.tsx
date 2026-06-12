@@ -1,14 +1,17 @@
 import React from 'react';
-import { Play, Pause, CheckCircle, MoveRight, Package, Minus, UserCheck, X } from 'lucide-react';
-import type { ActionLog } from '../../types';
+import { Play, Pause, CheckCircle, MoveRight, Package, Minus, UserCheck, X, MessageSquare } from 'lucide-react';
+import type { ActionLog, CoachAnnotation } from '../../types';
+import { ANNOTATION_SEVERITY_COLOR, ANNOTATION_SEVERITY_LABEL } from '../../types';
 import { CHANNEL_SHORT } from '../../types';
 import { classNames } from '../../utils/uuid';
+import { loadAnnotations } from '../../utils/storage';
 
 interface TimelineProps {
   logs: ActionLog[];
   startTime: number;
   patientNames: Record<string, string>;
   resourceNames: Record<string, string>;
+  recordId?: string;
 }
 
 const typeMeta: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -23,7 +26,21 @@ const typeMeta: Record<string, { icon: React.ReactNode; label: string; color: st
   SELECT_PATIENT: { icon: <UserCheck size={12} />, label: '选择', color: 'slate' },
 };
 
-export function Timeline({ logs, startTime, patientNames, resourceNames }: TimelineProps) {
+export function Timeline({ logs, startTime, patientNames, resourceNames, recordId }: TimelineProps) {
+  const annotations: CoachAnnotation[] = recordId ? loadAnnotations(recordId) : [];
+  const timestampAnnotations = React.useMemo(() => {
+    const map = new Map<number, CoachAnnotation[]>();
+    for (const ann of annotations) {
+      if (ann.targetType === 'TIMESTAMP' && ann.timestampMs != null) {
+        const key = Math.floor((ann.timestampMs - startTime) / 1000);
+        const list = map.get(key) ?? [];
+        list.push(ann);
+        map.set(key, list);
+      }
+    }
+    return map;
+  }, [annotations, startTime]);
+
   if (logs.length === 0) return null;
 
   const colorClass: Record<string, string> = {
@@ -121,6 +138,26 @@ export function Timeline({ logs, startTime, patientNames, resourceNames }: Timel
                   </span>
                 </div>
                 <div className="text-sm text-slate-700 mt-0.5">{content}</div>
+                {timestampAnnotations.has(t) && (
+                  <div className="mt-1 space-y-1">
+                    {timestampAnnotations.get(t)!.map((ann) => {
+                      const c = ANNOTATION_SEVERITY_COLOR[ann.severity];
+                      return (
+                        <div
+                          key={ann.id}
+                          className={classNames('flex items-start gap-1.5 px-2 py-1 rounded-lg border text-[11px]', c.bg, c.border)}
+                        >
+                          <MessageSquare size={10} className={classNames('shrink-0 mt-0.5', c.text)} />
+                          <div className={classNames('flex-1 min-w-0', c.text)}>
+                            <span className="font-semibold">{ANNOTATION_SEVERITY_LABEL[ann.severity]}</span>
+                            {' '}{ann.content}
+                            {ann.suggestion && <span className="opacity-70"> → {ann.suggestion}</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           );

@@ -1,17 +1,35 @@
 import React from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, FileJson } from 'lucide-react';
-import type { Level, GameRecord, ConflictInfo, ConflictResolution, ImportValidationResult } from '../../types';
+import type {
+  Level,
+  GameRecord,
+  ConflictInfo,
+  ConflictResolution,
+  ImportValidationResult,
+  CoachAnnotation,
+  AnnotationConflict,
+  AnnotationConflictResolution,
+  ReplayPackage,
+} from '../../types';
 import {
   validateAndNormalizeImport,
   applyResolution,
   readFileAsJSON,
+  detectAnnotationConflicts,
 } from '../../utils/import';
 import {
   upsertHistory,
   markRecordReadonly,
   appendImportLog,
+  loadAnnotations,
+  replaceAnnotations,
+  mergeAnnotations,
+  appendAnnotationImportLog,
+  clearAnnotationsForRecord,
 } from '../../utils/storage';
 import { ImportConflictDialog } from './ImportConflictDialog';
+import { AnnotationConflictDialog } from './AnnotationConflictDialog';
+import { useAnnotationStore } from '../../store/annotationStore';
 import { classNames } from '../../utils/uuid';
 
 interface ImportButtonProps {
@@ -41,14 +59,68 @@ export function ImportButton({
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState(false);
   const [conflictOpen, setConflictOpen] = React.useState(false);
+  const [annotationConflictOpen, setAnnotationConflictOpen] = React.useState(false);
   const [pendingResult, setPendingResult] = React.useState<ImportValidationResult | null>(null);
   const [pendingFileName, setPendingFileName] = React.useState<string>('');
+  const [pendingAnnotations, setPendingAnnotations] = React.useState<CoachAnnotation[] | null>(null);
+  const [pendingAnnotationConflicts, setPendingAnnotationConflicts] = React.useState<AnnotationConflict[]>([]);
+  const [pendingFinalRecord, setPendingFinalRecord] = React.useState<GameRecord | null>(null);
   const [toast, setToast] = React.useState<ToastState | null>(null);
+
+  const openConflictDialog = useAnnotationStore((s) => s.openConflictDialog);
 
   const showToast = React.useCallback((t: ToastState) => {
     setToast(t);
     setTimeout(() => setToast(null), 5000);
   }, []);
+
+  const handleAnnotationsDirect = React.useCallback(
+    (
+      recordId: string,
+      annotations: CoachAnnotation[] | undefined,
+      fileName: string
+    ) => {
+      if (!annotations || annotations.length === 0) {
+        appendAnnotationImportLog({
+          fileName,
+          recordId,
+          success: true,
+          localCountBefore: loadAnnotations(recordId).length,
+          importedCount: 0,
+          finalCount: loadAnnotations(recordId).length,
+        });
+        return;
+      }
+
+      const annConflicts = detectAnnotationConflicts(recordId, annotations, 1);
+      const localCountBefore = loadAnnotations(recordId).length;
+
+      if (annConflicts.length > 0) {
+        setPendingAnnotations(annotations);
+        setPendingAnnotationConflicts(annConflicts);
+        setAnnotationConflictOpen(true);
+        setBusy(false);
+        openConflictDialog(
+          annConflicts,
+          annotations,
+          recordId,
+          fileName
+        );
+        return;
+      }
+
+      const merged = mergeAnnotations(recordId, annotations.map((a) => ({ ...a, source: 'IMPORTED' as const })));
+      appendAnnotationImportLog({
+        fileName,
+        recordId,
+        success: true,
+        localCountBefore,
+        importedCount: annotations.length,
+        finalCount: merged.length,
+      });
+    },
+    [openConflictDialog]
+  );
 
   const finalizeImport = React.useCallback(
     (
@@ -57,7 +129,8 @@ export function ImportButton({
       resolutions: Record<number, ConflictResolution> | undefined,
       fileName: string,
       warnings: ImportValidationResult['warnings'],
-      errors: ImportValidationResult['errors']
+      errors: ImportValidationResult['errors'],
+      rawPkg?: ReplayPackage
     ) => {
       let finalRecord = record;
       const resolved: { type: ConflictInfo['type']; resolution: ConflictResolution }[] = [];
@@ -94,6 +167,11 @@ export function ImportButton({
 
       const overwriteMode =
         resolved.find((r) => r.type === 'DUPLICATE_ID' && r.resolution === 'OVERWRITE') !== undefined;
+
+      if (overwriteMode) {
+        clearAnnotationsForRecord(finalRecord.id);
+      }
+
       upsertHistory(finalRecord, overwriteMode ? 'overwrite' : 'insert');
       markRecordReadonly(finalRecord.id);
 
@@ -119,6 +197,48 @@ export function ImportButton({
 
       onImported?.(finalRecord);
       onAnyChange?.();
+
+      if (rawPkg && rawPkg.annotations && rawPkg.annotations.length > 0) {
+        setPendingFinalRecord(finalRecord);
+        const annConflicts = detectAnnotationConflicts(
+          finalRecord.id,
+          rawPkg.annotations,
+          rawPkg.annotationVersion
+        );
+        if (annConflicts.length > 0) {
+          setPendingAnnotations(rawPkg.annotations);
+          setPendingAnnotationConflicts(annConflicts);
+          setAnnotationConflictOpen(true);
+          setPendingFileName(fileName);
+        } else {
+          const localCountBefore = loadAnnotations(finalRecord.id).length;
+          const merged = mergeAnnotations(
+            finalRecord.id,
+            rawPkg.annotations.map((a) => ({ ...a, source: 'IMPORTED' as const }))
+          );
+          appendAnnotationImportLog({
+            fileName,
+            recordId: finalRecord.id,
+            success: true,
+            localCountBefore,
+            importedCount: rawPkg.annotations.length,
+            finalCount: merged.length,
+          });
+          if (merged.length > 0) {
+            showToast({ kind: 'success', title: `${merged.length} 条批注已导入` });
+          }
+        }
+      } else {
+        appendAnnotationImportLog({
+          fileName,
+          recordId: finalRecord.id,
+          success: true,
+          localCountBefore: loadAnnotations(finalRecord.id).length,
+          importedCount: 0,
+          finalCount: loadAnnotations(finalRecord.id).length,
+        });
+      }
+
       setBusy(false);
     },
     [onImported, onAnyChange, showToast]
@@ -173,13 +293,15 @@ export function ImportButton({
         return;
       }
 
+      const pkg = (raw as { replayPackage?: ReplayPackage } | undefined)?.replayPackage ?? (raw as ReplayPackage);
       finalizeImport(
         result.normalizedRecord,
         undefined,
         undefined,
         fileName,
         result.warnings,
-        result.errors
+        result.errors,
+        pkg
       );
     },
     [getLevel, getRecord, showToast, finalizeImport]
@@ -197,15 +319,90 @@ export function ImportButton({
     if (!pendingResult?.normalizedRecord) return;
     setConflictOpen(false);
     setBusy(true);
+    const rawPkg = pendingResult.replayPackage;
     finalizeImport(
       pendingResult.normalizedRecord,
       pendingResult.conflicts,
       resolutions,
       pendingFileName,
       pendingResult.warnings,
-      pendingResult.errors
+      pendingResult.errors,
+      rawPkg
     );
     setPendingResult(null);
+    setPendingFileName('');
+  };
+
+  const handleAnnotationResolve = (resolution: AnnotationConflictResolution) => {
+    if (!pendingFinalRecord || !pendingAnnotations) {
+      setAnnotationConflictOpen(false);
+      return;
+    }
+    const localCountBefore = loadAnnotations(pendingFinalRecord.id).length;
+    let finalCount = localCountBefore;
+    const conflictTypes = pendingAnnotationConflicts.map((c) => c.type);
+
+    if (resolution === 'KEEP_LOCAL') {
+      appendAnnotationImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        localCountBefore,
+        importedCount: pendingAnnotations.length,
+        finalCount: localCountBefore,
+        resolution: 'KEEP_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'warn', title: '保留本地批注', detail: `${localCountBefore} 条本地批注未被修改` });
+    } else if (resolution === 'OVERWRITE_LOCAL') {
+      const imported = pendingAnnotations.map((a) => ({ ...a, source: 'IMPORTED' as const }));
+      replaceAnnotations(pendingFinalRecord.id, imported);
+      finalCount = imported.length;
+      appendAnnotationImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        localCountBefore,
+        importedCount: pendingAnnotations.length,
+        finalCount,
+        resolution: 'OVERWRITE_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'success', title: '批注已覆盖', detail: `使用 ${finalCount} 条导入批注替换本地批注` });
+    } else if (resolution === 'MERGE') {
+      const merged = mergeAnnotations(pendingFinalRecord.id, pendingAnnotations);
+      finalCount = merged.length;
+      appendAnnotationImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        localCountBefore,
+        importedCount: pendingAnnotations.length,
+        finalCount,
+        resolution: 'MERGE',
+        conflicts: conflictTypes,
+      });
+      const added = finalCount - localCountBefore;
+      showToast({ kind: 'success', title: '批注已合并', detail: added > 0 ? `新增 ${added} 条不重复批注` : '已存在相同目标批注，无新增' });
+    } else {
+      appendAnnotationImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: false,
+        localCountBefore,
+        importedCount: pendingAnnotations.length,
+        finalCount: localCountBefore,
+        resolution: 'SKIP',
+        conflicts: conflictTypes,
+        errors: ['用户选择跳过批注导入'],
+      });
+    }
+
+    onAnyChange?.();
+    setAnnotationConflictOpen(false);
+    setPendingAnnotations(null);
+    setPendingAnnotationConflicts([]);
+    setPendingFinalRecord(null);
     setPendingFileName('');
   };
 
@@ -275,6 +472,32 @@ export function ImportButton({
           setPendingFileName('');
         }}
         onResolve={handleResolve}
+      />
+
+      <AnnotationConflictDialog
+        open={annotationConflictOpen}
+        conflicts={pendingAnnotationConflicts}
+        localCount={pendingFinalRecord ? loadAnnotations(pendingFinalRecord.id).length : 0}
+        importedCount={pendingAnnotations?.length ?? 0}
+        onClose={() => {
+          if (pendingFinalRecord && pendingAnnotations) {
+            appendAnnotationImportLog({
+              fileName: pendingFileName,
+              recordId: pendingFinalRecord.id,
+              success: false,
+              localCountBefore: loadAnnotations(pendingFinalRecord.id).length,
+              importedCount: pendingAnnotations.length,
+              finalCount: loadAnnotations(pendingFinalRecord.id).length,
+              errors: ['用户取消了批注冲突处理'],
+            });
+          }
+          setAnnotationConflictOpen(false);
+          setPendingAnnotations(null);
+          setPendingAnnotationConflicts([]);
+          setPendingFinalRecord(null);
+          setPendingFileName('');
+        }}
+        onResolve={handleAnnotationResolve}
       />
     </>
   );

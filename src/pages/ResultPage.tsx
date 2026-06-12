@@ -8,6 +8,7 @@ import { ScoreGauge } from '../components/result/ScoreGauge';
 import { ErrorTable } from '../components/result/ErrorTable';
 import { Timeline } from '../components/result/Timeline';
 import { ExportButtons } from '../components/result/ExportButtons';
+import { CoachAnnotationPanel } from '../components/result/CoachAnnotationPanel';
 import { WarningBanner } from '../components/layout/Toasts';
 import { formatTime } from '../utils/uuid';
 import { isRecordReadonly } from '../utils/storage';
@@ -180,6 +181,7 @@ export default function ResultPage() {
               startTime={session.startTime}
               patientNames={patientNames}
               resourceNames={resourceNames}
+              recordId={record.id}
             />
             {session.errors.length > 0 && (
               <div className="card p-5">
@@ -198,6 +200,13 @@ export default function ResultPage() {
                 </div>
               </div>
             )}
+            <CoachAnnotationPanel
+              recordId={record.id}
+              level={level}
+              sessionStartTime={session.startTime}
+              patientNames={patientNames}
+              isReadonly={isReadonly}
+            />
           </div>
         </div>
       </div>

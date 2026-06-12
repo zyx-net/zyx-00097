@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock, Download, FileText, ScrollText, X } from 'lucide-react';
+import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock, Download, FileText, ScrollText, X, MessageSquare } from 'lucide-react';
 import { useHistoryStore } from '../store/historyStore';
 import { useConfigStore } from '../store/configStore';
 import { Timeline } from '../components/result/Timeline';
@@ -8,7 +8,7 @@ import { ErrorTable } from '../components/result/ErrorTable';
 import { ImportButton } from '../components/result/ImportButton';
 import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR, type Difficulty } from '../types';
 import { classNames, formatTime, formatDateTime } from '../utils/uuid';
-import { computeReplayHash, loadImportLog } from '../utils/storage';
+import { computeReplayHash, loadImportLog, getAnnotationCount } from '../utils/storage';
 import { downloadReplayJSON, downloadReplayTXT } from '../utils/export';
 import type { ImportLogEntry } from '../types';
 
@@ -163,6 +163,17 @@ export default function HistoryPage() {
                             <Download size={10} className="inline mr-0.5" />已导入
                           </span>
                         )}
+                        {(() => {
+                          const cnt = getAnnotationCount(r.id);
+                          if (cnt > 0) {
+                            return (
+                              <span className="chip bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
+                                <MessageSquare size={10} className="inline mr-0.5" />批注 {cnt}
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                       <div className="flex items-center gap-4 text-xs text-slate-500 flex-wrap">
                         <span className="flex items-center gap-1">

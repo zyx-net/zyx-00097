@@ -1,9 +1,9 @@
 import React from 'react';
-import { Download, RotateCcw, Home, FileJson, FileText, RefreshCw } from 'lucide-react';
+import { Download, RotateCcw, Home, FileJson, FileText, RefreshCw, MessageSquare } from 'lucide-react';
 import type { Level, GameRecord } from '../../types';
 import { downloadReplayJSON, downloadReplayTXT, downloadScoreResultAsCSV } from '../../utils/export';
 import { calculateScore } from '../../utils/scoring';
-import { computeReplayHash } from '../../utils/storage';
+import { computeReplayHash, getAnnotationCount } from '../../utils/storage';
 import { useNavigate } from 'react-router-dom';
 import { ImportButton } from './ImportButton';
 
@@ -21,6 +21,7 @@ interface ExportButtonsProps {
 export function ExportButtons({ level, record, onReplay, getLevel, getRecord, onImported, onAnyChange, readonly }: ExportButtonsProps) {
   const navigate = useNavigate();
   const [recalcResult, setRecalcResult] = React.useState<string | null>(null);
+  const annotationCount = getAnnotationCount(record.id);
 
   const handleRecalc = () => {
     const r = calculateScore(level, record.sessionSnapshot);
@@ -38,6 +39,12 @@ export function ExportButtons({ level, record, onReplay, getLevel, getRecord, on
   return (
     <div className="card p-5">
       <h3 className="section-title mb-4">操作与复盘</h3>
+      {annotationCount > 0 && (
+        <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700 flex items-center gap-2">
+          <MessageSquare size={12} />
+          <span>含 <b>{annotationCount}</b> 条教练批注，导出 JSON 时将一并打包（旧版导入会自动兼容）</span>
+        </div>
+      )}
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <button

@@ -9,9 +9,11 @@ import type {
   ConflictInfo,
   ResourceAssignment,
   ScoreResult,
+  CoachAnnotation,
+  AnnotationConflict,
 } from '../types';
-import { SUPPORTED_EXPORT_VERSIONS } from '../types';
-import { computeReplayHash, normalizeSession } from './storage';
+import { SUPPORTED_EXPORT_VERSIONS, ANNOTATION_VERSION_CURRENT } from '../types';
+import { computeReplayHash, normalizeSession, loadAnnotations, getAnnotationStoreVersion } from './storage';
 import { generateUUID } from './uuid';
 import { calculateScore } from './scoring';
 
@@ -368,4 +370,54 @@ export function readFileAsJSON(file: File): Promise<unknown> {
     };
     reader.readAsText(file, 'utf-8');
   });
+}
+
+export function detectAnnotationConflicts(
+  recordId: string,
+  importedAnnotations: CoachAnnotation[] | undefined,
+  importedAnnotationVersion: number | undefined
+): AnnotationConflict[] {
+  const conflicts: AnnotationConflict[] = [];
+  if (!importedAnnotations || importedAnnotations.length === 0) return conflicts;
+
+  const localAnnotations = loadAnnotations(recordId);
+
+  if (localAnnotations.length > 0) {
+    conflicts.push({
+      type: 'HAS_LOCAL_ANNOTATIONS',
+      title: '本地已有教练批注',
+      description: `该回放记录本地已有 ${localAnnotations.length} 条批注，导入包携带 ${importedAnnotations.length} 条批注，请选择处理方式`,
+      localAnnotations,
+      importedAnnotations,
+    });
+
+    const localSigSet = new Set(
+      localAnnotations.map((a) => `${a.targetType}:${a.timestampMs ?? ''}:${a.patientId ?? ''}`)
+    );
+    const duplicates = importedAnnotations.filter((a) =>
+      localSigSet.has(`${a.targetType}:${a.timestampMs ?? ''}:${a.patientId ?? ''}`)
+    );
+    if (duplicates.length > 0) {
+      conflicts.push({
+        type: 'DUPLICATE_ANNOTATION',
+        title: '存在相同目标的重复批注',
+        description: `导入包中有 ${duplicates.length} 条批注与本地批注的目标（时间点/患者）相同`,
+        localAnnotations: duplicates,
+        importedAnnotations,
+      });
+    }
+  }
+
+  const localVersion = getAnnotationStoreVersion();
+  if (importedAnnotationVersion !== undefined && importedAnnotationVersion !== localVersion) {
+    conflicts.push({
+      type: 'ANNOTATION_VERSION_DIFF',
+      title: '批注版本不一致',
+      description: `本地批注版本 v${localVersion}，导入包批注版本 v${importedAnnotationVersion}，合并后可能出现格式差异`,
+      annotationVersionLocal: localVersion,
+      annotationVersionImported: importedAnnotationVersion,
+    });
+  }
+
+  return conflicts;
 }

@@ -5,8 +5,11 @@ import type {
   ScoreResult,
   ResourceAssignment,
   ImportLogEntry,
+  CoachAnnotation,
+  AnnotationStore,
+  AnnotationImportLogEntry,
 } from '../types';
-import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG } from '../types';
+import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG, MAX_ANNOTATION_IMPORT_LOG, ANNOTATION_VERSION_CURRENT } from '../types';
 import { generateUUID } from './uuid';
 
 const read = <T>(key: string, fallback: T): T => {
@@ -222,4 +225,134 @@ export function computeReplayHash(result: ScoreResult): string {
     h = (h * 31 + s.charCodeAt(i)) >>> 0;
   }
   return h.toString(16).padStart(8, '0');
+}
+
+function loadAnnotationStore(): AnnotationStore {
+  const raw = read<AnnotationStore | null>(STORAGE_KEYS.ANNOTATIONS, null);
+  if (!raw || !raw.annotations) {
+    return { version: ANNOTATION_VERSION_CURRENT, annotations: {} };
+  }
+  return raw;
+}
+
+function writeAnnotationStore(store: AnnotationStore): void {
+  write(STORAGE_KEYS.ANNOTATIONS, store);
+}
+
+export function loadAnnotations(recordId: string): CoachAnnotation[] {
+  const store = loadAnnotationStore();
+  return store.annotations[recordId] ?? [];
+}
+
+export function saveAnnotations(recordId: string, annotations: CoachAnnotation[]): void {
+  const store = loadAnnotationStore();
+  store.annotations[recordId] = annotations;
+  writeAnnotationStore(store);
+}
+
+export function addAnnotation(recordId: string, annotation: Omit<CoachAnnotation, 'id' | 'recordId' | 'createdAt' | 'updatedAt' | 'version' | 'source'>): CoachAnnotation {
+  const now = Date.now();
+  const full: CoachAnnotation = {
+    ...annotation,
+    id: generateUUID(),
+    recordId,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    source: 'LOCAL',
+  };
+  const list = loadAnnotations(recordId);
+  list.push(full);
+  saveAnnotations(recordId, list);
+  return full;
+}
+
+export function updateAnnotation(recordId: string, annotationId: string, updates: Partial<Pick<CoachAnnotation, 'severity' | 'content' | 'suggestion'>>): CoachAnnotation | null {
+  const list = loadAnnotations(recordId);
+  const idx = list.findIndex((a) => a.id === annotationId);
+  if (idx < 0) return null;
+  list[idx] = {
+    ...list[idx],
+    ...updates,
+    updatedAt: Date.now(),
+    version: list[idx].version + 1,
+  };
+  saveAnnotations(recordId, list);
+  return list[idx];
+}
+
+export function deleteAnnotation(recordId: string, annotationId: string): boolean {
+  const list = loadAnnotations(recordId);
+  const idx = list.findIndex((a) => a.id === annotationId);
+  if (idx < 0) return false;
+  list.splice(idx, 1);
+  saveAnnotations(recordId, list);
+  return true;
+}
+
+export function getAnnotationCount(recordId: string): number {
+  return loadAnnotations(recordId).length;
+}
+
+export function hasAnnotations(recordId: string): boolean {
+  return getAnnotationCount(recordId) > 0;
+}
+
+export function replaceAnnotations(recordId: string, annotations: CoachAnnotation[]): void {
+  saveAnnotations(recordId, annotations);
+}
+
+export function mergeAnnotations(recordId: string, incoming: CoachAnnotation[]): CoachAnnotation[] {
+  const local = loadAnnotations(recordId);
+  const localKeys = new Set(local.map((a) => a.id));
+  const localSigKeys = new Set(
+    local.map((a) => `${a.targetType}:${a.timestampMs ?? ''}:${a.patientId ?? ''}`)
+  );
+  const merged = [...local];
+  for (const ann of incoming) {
+    if (localKeys.has(ann.id)) continue;
+    const sig = `${ann.targetType}:${ann.timestampMs ?? ''}:${ann.patientId ?? ''}`;
+    if (localSigKeys.has(sig)) continue;
+    merged.push({ ...ann, source: 'IMPORTED' as const });
+  }
+  saveAnnotations(recordId, merged);
+  return merged;
+}
+
+export function clearAnnotationsForRecord(recordId: string): void {
+  const store = loadAnnotationStore();
+  delete store.annotations[recordId];
+  writeAnnotationStore(store);
+}
+
+export function clearAllAnnotations(): void {
+  localStorage.removeItem(STORAGE_KEYS.ANNOTATIONS);
+}
+
+export function getAnnotationStoreVersion(): number {
+  const store = loadAnnotationStore();
+  return store.version;
+}
+
+export function loadAnnotationImportLog(): AnnotationImportLogEntry[] {
+  const arr = read<AnnotationImportLogEntry[]>(STORAGE_KEYS.ANNOTATION_IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function appendAnnotationImportLog(entry: Omit<AnnotationImportLogEntry, 'id' | 'timestamp'>): AnnotationImportLogEntry {
+  const full: AnnotationImportLogEntry = {
+    id: generateUUID(),
+    timestamp: Date.now(),
+    ...entry,
+  };
+  const list = loadAnnotationImportLog();
+  list.unshift(full);
+  const trimmed = list.slice(0, MAX_ANNOTATION_IMPORT_LOG);
+  write(STORAGE_KEYS.ANNOTATION_IMPORT_LOG, trimmed);
+  return full;
+}
+
+export function clearAnnotationImportLog(): void {
+  localStorage.removeItem(STORAGE_KEYS.ANNOTATION_IMPORT_LOG);
 }
