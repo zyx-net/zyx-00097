@@ -288,6 +288,8 @@ export interface ReplayPackage {
   annotationVersion?: number;
   caseInfo?: CaseInfo;
   caseVersion?: number;
+  reviewListItem?: ReviewListItem;
+  reviewListVersion?: number;
 }
 
 export interface AnnotationImportLogEntry {
@@ -443,6 +445,90 @@ export interface CaseImportLogEntry {
 export const CASE_VERSION_CURRENT = 1 as const;
 export const MAX_CASE_IMPORT_LOG = 100;
 
+export type ReviewPriority = 'HIGH' | 'MEDIUM' | 'LOW';
+
+export const REVIEW_PRIORITY_LABEL: Record<ReviewPriority, string> = {
+  HIGH: '高优先级',
+  MEDIUM: '中优先级',
+  LOW: '低优先级',
+};
+
+export const REVIEW_PRIORITY_COLOR: Record<ReviewPriority, { bg: string; border: string; text: string; dot: string }> = {
+  HIGH: { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-700', dot: 'bg-red-500' },
+  MEDIUM: { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-700', dot: 'bg-amber-500' },
+  LOW: { bg: 'bg-slate-50', border: 'border-slate-300', text: 'text-slate-600', dot: 'bg-slate-400' },
+};
+
+export type ReviewStatus = 'PENDING' | 'REVIEWED';
+
+export interface ReviewListItem {
+  recordId: string;
+  status: ReviewStatus;
+  priority: ReviewPriority;
+  assignee: string;
+  remark: string;
+  createdAt: number;
+  updatedAt: number;
+  version: number;
+  source: 'LOCAL' | 'IMPORTED';
+}
+
+export interface ReviewListStore {
+  version: number;
+  items: Record<string, ReviewListItem>;
+}
+
+export type ReviewListConflictType =
+  | 'HAS_LOCAL_REVIEW'
+  | 'PRIORITY_CONFLICT'
+  | 'STATUS_CONFLICT'
+  | 'REMARK_CONFLICT'
+  | 'ASSIGNEE_CONFLICT'
+  | 'REVIEW_VERSION_DIFF';
+
+export interface ReviewListConflict {
+  type: ReviewListConflictType;
+  title: string;
+  description: string;
+  localReview?: ReviewListItem;
+  importedReview?: ReviewListItem;
+  localPriority?: ReviewPriority;
+  importedPriority?: ReviewPriority;
+  localStatus?: ReviewStatus;
+  importedStatus?: ReviewStatus;
+  localRemark?: string;
+  importedRemark?: string;
+  localAssignee?: string;
+  importedAssignee?: string;
+  reviewVersionLocal?: number;
+  reviewVersionImported?: number;
+}
+
+export type ReviewListConflictResolution = 'KEEP_LOCAL' | 'MERGE_REMARK' | 'OVERWRITE_LOCAL' | 'SKIP';
+
+export interface ReviewListImportLogEntry {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  recordId: string;
+  success: boolean;
+  hasLocalReview: boolean;
+  importedHasReview: boolean;
+  finalHasReview?: boolean;
+  finalStatus?: ReviewStatus;
+  finalPriority?: ReviewPriority;
+  resolution?: ReviewListConflictResolution;
+  conflicts?: string[];
+  errors?: string[];
+  priorityChanged?: boolean;
+  statusChanged?: boolean;
+  assigneeChanged?: boolean;
+  remarkChanged?: boolean;
+}
+
+export const REVIEW_VERSION_CURRENT = 1 as const;
+export const MAX_REVIEW_LIST_IMPORT_LOG = 100;
+
 export const STORAGE_KEYS = {
   IN_PROGRESS: 'triage:in-progress',
   HISTORY: 'triage:history',
@@ -453,9 +539,12 @@ export const STORAGE_KEYS = {
   CASES: 'triage:cases',
   CASE_IMPORT_LOG: 'triage:case-import-log',
   HISTORY_FILTERS: 'triage:history-filters',
+  REVIEW_LIST: 'triage:review-list',
+  REVIEW_LIST_IMPORT_LOG: 'triage:review-list-import-log',
   STORAGE_VERSION: 1,
   ANNOTATION_VERSION: 1,
   CASE_VERSION: 1,
+  REVIEW_VERSION: 1,
 } as const;
 
 export const ERROR_CODES = {

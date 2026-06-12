@@ -1,18 +1,22 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, ListChecks, CheckCircle, Flag, User } from 'lucide-react';
 import { useHistoryStore } from '../store/historyStore';
 import { useConfigStore } from '../store/configStore';
 import { useGameStore } from '../store/gameStore';
 import { useScoring } from '../hooks/useScoring';
+import { useReviewListStore } from '../store/reviewListStore';
 import { ScoreGauge } from '../components/result/ScoreGauge';
 import { ErrorTable } from '../components/result/ErrorTable';
 import { Timeline } from '../components/result/Timeline';
 import { ExportButtons } from '../components/result/ExportButtons';
 import { CoachAnnotationPanel } from '../components/result/CoachAnnotationPanel';
+import { AddReviewListDialog } from '../components/result/AddReviewListDialog';
 import { WarningBanner } from '../components/layout/Toasts';
-import { formatTime } from '../utils/uuid';
+import { classNames, formatTime } from '../utils/uuid';
 import { isRecordReadonly } from '../utils/storage';
 import type { GameRecord, Level } from '../types';
+import { REVIEW_PRIORITY_LABEL } from '../types';
 
 export default function ResultPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -24,12 +28,14 @@ export default function ResultPage() {
   const activeSession = useGameStore((s) => s.session);
   const activeLevel = useGameStore((s) => s.level);
   const { recompute, buildRecord } = useScoring();
+  const { refresh: refreshReviewList, getItem, hasItem, openAddDialog, markReviewed, markPending } = useReviewListStore();
 
   const [record, setRecord] = React.useState<GameRecord | null>(null);
   const [level, setLevel] = React.useState<Level | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   const isReadonly = record ? (record.imported || isRecordReadonly(record.id)) : false;
+  const reviewItem = record ? getItem(record.id) : null;
 
   useEffect(() => {
     init();
@@ -37,6 +43,7 @@ export default function ResultPage() {
 
   useEffect(() => {
     refresh();
+    refreshReviewList();
     let rec: GameRecord | null = null;
     if (sessionId) {
       rec = getRecord(sessionId);
@@ -61,7 +68,7 @@ export default function ResultPage() {
     if (!level) {
       setLevel(getLevel(rec.levelId));
     }
-  }, [sessionId]);
+  }, [sessionId, refreshReviewList]);
 
   const handleReplay = () => {
     if (record) {
@@ -119,6 +126,51 @@ export default function ResultPage() {
     <div className="min-h-screen px-4 py-6 md:py-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-6 text-center">
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => navigate('/history')} className="btn-ghost text-sm">
+              <ArrowLeft size={14} /> 返回历史
+            </button>
+            <div className="flex items-center gap-2">
+              {reviewItem && (
+                <>
+                  <span className={classNames(
+                    'chip text-[11px] font-bold',
+                    reviewItem.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  )}>
+                    {reviewItem.status === 'PENDING' ? <ListChecks size={12} className="inline mr-0.5" /> : <CheckCircle size={12} className="inline mr-0.5" />}
+                    {reviewItem.status === 'PENDING' ? '待讲' : '已讲'} · <Flag size={12} className="inline mr-0.5" />{REVIEW_PRIORITY_LABEL[reviewItem.priority]}
+                    {reviewItem.assignee && <span className="ml-0.5">· <User size={12} className="inline mr-0.5" />{reviewItem.assignee}</span>}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (reviewItem.status === 'PENDING') {
+                        markReviewed(record!.id);
+                      } else {
+                        markPending(record!.id);
+                      }
+                    }}
+                    className="btn-primary text-xs"
+                  >
+                    {reviewItem.status === 'PENDING' ? (
+                      <><CheckCircle size={12} /> 标记已讲</>
+                    ) : (
+                      <><ListChecks size={12} /> 撤回到待讲</>
+                    )}
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => openAddDialog(record!.id)}
+                className={classNames(
+                  'btn-ghost text-xs',
+                  hasItem(record!.id) && 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                )}
+              >
+                <ListChecks size={12} />
+                {hasItem(record!.id) ? '编辑清单' : '加入待讲'}
+              </button>
+            </div>
+          </div>
           <h1 className="font-title text-2xl md:text-3xl text-slate-900 mb-1">
             {isReadonly ? '复盘查看' : '训练完成'}
           </h1>
@@ -130,6 +182,12 @@ export default function ResultPage() {
             <p className="text-xs text-sky-600 mt-1">
               {record.imported ? `导入记录 · 只读模式` : `只读复盘模式`}
               {record.importedAt ? ` · 导入于 ${new Date(record.importedAt).toLocaleString()}` : ''}
+            </p>
+          )}
+          {reviewItem?.remark && (
+            <p className="text-xs text-amber-700 mt-1 bg-amber-50 px-3 py-1 rounded-full inline-block">
+              <ListChecks size={10} className="inline mr-1" />
+              备注：{reviewItem.remark}
             </p>
           )}
         </div>
@@ -210,6 +268,7 @@ export default function ResultPage() {
           </div>
         </div>
       </div>
+      <AddReviewListDialog />
     </div>
   );
 }

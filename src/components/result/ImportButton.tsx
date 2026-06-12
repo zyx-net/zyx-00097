@@ -13,6 +13,10 @@ import type {
   CaseConflict,
   CaseConflictResolution,
   ReplayPackage,
+  ReviewListItem,
+  ReviewListConflict,
+  ReviewListConflictResolution,
+  ReviewListImportLogEntry,
 } from '../../types';
 import {
   validateAndNormalizeImport,
@@ -20,6 +24,7 @@ import {
   readFileAsJSON,
   detectAnnotationConflicts,
   detectCaseConflicts,
+  detectReviewListConflicts,
 } from '../../utils/import';
 import {
   upsertHistory,
@@ -35,12 +40,20 @@ import {
   mergeCase,
   appendCaseImportLog,
   clearCasesForRecord,
+  loadReviewItem,
+  hasReviewItem,
+  replaceReviewItem,
+  mergeReviewItem,
+  appendReviewListImportLog,
+  clearReviewItemForRecord,
 } from '../../utils/storage';
 import { ImportConflictDialog } from './ImportConflictDialog';
 import { AnnotationConflictDialog } from './AnnotationConflictDialog';
 import { CaseConflictDialog } from './CaseConflictDialog';
+import { ReviewListConflictDialog } from './ReviewListConflictDialog';
 import { useAnnotationStore } from '../../store/annotationStore';
 import { useCaseStore } from '../../store/caseStore';
+import { useReviewListStore } from '../../store/reviewListStore';
 import { classNames } from '../../utils/uuid';
 
 interface ImportButtonProps {
@@ -78,12 +91,16 @@ export function ImportButton({
   const [pendingAnnotationConflicts, setPendingAnnotationConflicts] = React.useState<AnnotationConflict[]>([]);
   const [pendingCase, setPendingCase] = React.useState<CaseInfo | null>(null);
   const [pendingCaseConflicts, setPendingCaseConflicts] = React.useState<CaseConflict[]>([]);
+  const [pendingReviewItem, setPendingReviewItem] = React.useState<ReviewListItem | null>(null);
+  const [pendingReviewListConflicts, setPendingReviewListConflicts] = React.useState<ReviewListConflict[]>([]);
   const [pendingFinalRecord, setPendingFinalRecord] = React.useState<GameRecord | null>(null);
   const [pendingAfterAnnotations, setPendingAfterAnnotations] = React.useState(false);
+  const [pendingAfterCases, setPendingAfterCases] = React.useState(false);
   const [toast, setToast] = React.useState<ToastState | null>(null);
 
   const openConflictDialog = useAnnotationStore((s) => s.openConflictDialog);
   const openCaseConflictDialog = useCaseStore((s) => s.openConflictDialog);
+  const openReviewListConflictDialog = useReviewListStore((s) => s.openConflictDialog);
 
   const showToast = React.useCallback((t: ToastState) => {
     setToast(t);
@@ -132,6 +149,54 @@ export function ImportButton({
       });
     },
     [openCaseConflictDialog]
+  );
+
+  const handleReviewListDirect = React.useCallback(
+    (
+      recordId: string,
+      importedReview: ReviewListItem | undefined,
+      importedReviewVersion: number | undefined,
+      fileName: string
+    ) => {
+      if (!importedReview) {
+        const hasLocal = hasReviewItem(recordId);
+        appendReviewListImportLog({
+          fileName,
+          recordId,
+          success: true,
+          hasLocalReview: hasLocal,
+          importedHasReview: false,
+          finalHasReview: hasLocal,
+          resolution: 'KEEP_LOCAL',
+        });
+        return;
+      }
+
+      const reviewConflicts = detectReviewListConflicts(recordId, importedReview, importedReviewVersion);
+      const hasLocal = hasReviewItem(recordId);
+
+      if (reviewConflicts.length > 0) {
+        setPendingReviewItem(importedReview);
+        setPendingReviewListConflicts(reviewConflicts);
+        setPendingFileName(fileName);
+        openReviewListConflictDialog(reviewConflicts, importedReview, recordId, fileName);
+        return;
+      }
+
+      const merged = mergeReviewItem(recordId, importedReview);
+      appendReviewListImportLog({
+        fileName,
+        recordId,
+        success: true,
+        hasLocalReview: hasLocal,
+        importedHasReview: true,
+        finalHasReview: true,
+        finalStatus: merged.status,
+        finalPriority: merged.priority,
+        resolution: hasLocal ? 'MERGE_REMARK' : 'KEEP_LOCAL',
+      });
+    },
+    [openReviewListConflictDialog]
   );
 
   const finalizeImport = React.useCallback(
@@ -183,6 +248,7 @@ export function ImportButton({
       if (overwriteMode) {
         clearAnnotationsForRecord(finalRecord.id);
         clearCasesForRecord(finalRecord.id);
+        clearReviewItemForRecord(finalRecord.id);
       }
 
       upsertHistory(finalRecord, overwriteMode ? 'overwrite' : 'insert');
@@ -254,6 +320,7 @@ export function ImportButton({
               finalHasCase: hasCase(finalRecord.id),
             });
           }
+          handleReviewListDirect(finalRecord.id, rawPkg.reviewListItem, rawPkg.reviewListVersion, fileName);
         }
       } else {
         appendAnnotationImportLog({
@@ -276,11 +343,12 @@ export function ImportButton({
             finalHasCase: hasCase(finalRecord.id),
           });
         }
+        handleReviewListDirect(finalRecord.id, rawPkg?.reviewListItem, rawPkg?.reviewListVersion, fileName);
       }
 
       setBusy(false);
     },
-    [onImported, onAnyChange, showToast, handleCaseDirect]
+    [onImported, onAnyChange, showToast, handleCaseDirect, handleReviewListDirect]
   );
 
   const handleFile = React.useCallback(
@@ -453,6 +521,9 @@ export function ImportButton({
       });
     }
 
+    handleReviewListDirect(pendingFinalRecord.id, pkg?.reviewListItem, pkg?.reviewListVersion, pendingFileName);
+
+    onAnyChange?.();
     setAnnotationConflictOpen(false);
     setPendingAnnotations(null);
     setPendingAnnotationConflicts([]);
@@ -529,9 +600,91 @@ export function ImportButton({
     }
 
     onAnyChange?.();
+
+    const pkg = pendingResult?.replayPackage;
+    handleReviewListDirect(pendingFinalRecord.id, pkg?.reviewListItem, pkg?.reviewListVersion, pendingFileName);
+
+    onAnyChange?.();
     setCaseConflictOpen(false);
     setPendingCase(null);
     setPendingCaseConflicts([]);
+    setPendingFinalRecord(null);
+    setPendingFileName('');
+  };
+
+  const handleReviewListResolve = (resolution: ReviewListConflictResolution) => {
+    if (!pendingFinalRecord || !pendingReviewItem) {
+      useReviewListStore.getState().closeConflictDialog();
+      return;
+    }
+    const hasLocal = hasReviewItem(pendingFinalRecord.id);
+    const conflictTypes = pendingReviewListConflicts.map((c) => c.type);
+
+    if (resolution === 'KEEP_LOCAL') {
+      appendReviewListImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalReview: hasLocal,
+        importedHasReview: true,
+        finalHasReview: hasLocal,
+        finalStatus: hasLocal ? loadReviewItem(pendingFinalRecord.id)!.status : undefined,
+        finalPriority: hasLocal ? loadReviewItem(pendingFinalRecord.id)!.priority : undefined,
+        resolution: 'KEEP_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'warn', title: '保留本地清单', detail: '本地待讲清单数据未被修改' });
+    } else if (resolution === 'OVERWRITE_LOCAL') {
+      replaceReviewItem(pendingFinalRecord.id, pendingReviewItem);
+      const finalItem = loadReviewItem(pendingFinalRecord.id);
+      appendReviewListImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalReview: hasLocal,
+        importedHasReview: true,
+        finalHasReview: true,
+        finalStatus: finalItem?.status,
+        finalPriority: finalItem?.priority,
+        resolution: 'OVERWRITE_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'success', title: '清单已覆盖', detail: '使用导入的待讲清单数据替换了本地数据' });
+    } else if (resolution === 'MERGE_REMARK') {
+      const merged = mergeReviewItem(pendingFinalRecord.id, pendingReviewItem);
+      appendReviewListImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalReview: hasLocal,
+        importedHasReview: true,
+        finalHasReview: true,
+        finalStatus: merged.status,
+        finalPriority: merged.priority,
+        resolution: 'MERGE_REMARK',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'success', title: '清单已合并', detail: '已合并优先级、负责人和备注信息' });
+    } else {
+      appendReviewListImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: false,
+        hasLocalReview: hasLocal,
+        importedHasReview: true,
+        finalHasReview: hasLocal,
+        finalStatus: hasLocal ? loadReviewItem(pendingFinalRecord.id)!.status : undefined,
+        finalPriority: hasLocal ? loadReviewItem(pendingFinalRecord.id)!.priority : undefined,
+        resolution: 'SKIP',
+        conflicts: conflictTypes,
+        errors: ['用户选择跳过待讲清单导入'],
+      });
+    }
+
+    onAnyChange?.();
+    useReviewListStore.getState().closeConflictDialog();
+    setPendingReviewItem(null);
+    setPendingReviewListConflicts([]);
     setPendingFinalRecord(null);
     setPendingFileName('');
   };
@@ -654,6 +807,33 @@ export function ImportButton({
           setPendingFileName('');
         }}
         onResolve={handleCaseResolve}
+      />
+
+      <ReviewListConflictDialog
+        open={useReviewListStore((s) => s.conflictDialogOpen)}
+        conflicts={pendingReviewListConflicts}
+        localHasReview={pendingFinalRecord ? hasReviewItem(pendingFinalRecord.id) : false}
+        importedHasReview={!!pendingReviewItem}
+        onClose={() => {
+          if (pendingFinalRecord && pendingReviewItem) {
+            const hasLocal = hasReviewItem(pendingFinalRecord.id);
+            appendReviewListImportLog({
+              fileName: pendingFileName,
+              recordId: pendingFinalRecord.id,
+              success: false,
+              hasLocalReview: hasLocal,
+              importedHasReview: true,
+              finalHasReview: hasLocal,
+              errors: ['用户取消了待讲清单冲突处理'],
+            });
+          }
+          useReviewListStore.getState().closeConflictDialog();
+          setPendingReviewItem(null);
+          setPendingReviewListConflicts([]);
+          setPendingFinalRecord(null);
+          setPendingFileName('');
+        }}
+        onResolve={handleReviewListResolve}
       />
     </>
   );

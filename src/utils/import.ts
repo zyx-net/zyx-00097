@@ -13,9 +13,11 @@ import type {
   AnnotationConflict,
   CaseInfo,
   CaseConflict,
+  ReviewListItem,
+  ReviewListConflict,
 } from '../types';
-import { SUPPORTED_EXPORT_VERSIONS, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT } from '../types';
-import { computeReplayHash, normalizeSession, loadAnnotations, getAnnotationStoreVersion, loadCase, getCaseStoreVersion } from './storage';
+import { SUPPORTED_EXPORT_VERSIONS, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT, REVIEW_VERSION_CURRENT } from '../types';
+import { computeReplayHash, normalizeSession, loadAnnotations, getAnnotationStoreVersion, loadCase, getCaseStoreVersion, loadReviewItem, getReviewListStoreVersion } from './storage';
 import { generateUUID } from './uuid';
 import { calculateScore } from './scoring';
 
@@ -477,6 +479,80 @@ export function detectCaseConflicts(
       description: `本地案例版本 v${localVersion}，导入包案例版本 v${importedCaseVersion}`,
       caseVersionLocal: localVersion,
       caseVersionImported: importedCaseVersion,
+    });
+  }
+
+  return conflicts;
+}
+
+export function detectReviewListConflicts(
+  recordId: string,
+  importedReview: ReviewListItem | undefined,
+  importedReviewVersion: number | undefined
+): ReviewListConflict[] {
+  const conflicts: ReviewListConflict[] = [];
+  if (!importedReview) return conflicts;
+
+  const localReview = loadReviewItem(recordId);
+
+  if (localReview) {
+    conflicts.push({
+      type: 'HAS_LOCAL_REVIEW',
+      title: '本地已有待讲清单记录',
+      description: `该回放记录本地已在待讲清单中，导入包也携带清单数据，请选择处理方式`,
+      localReview,
+      importedReview,
+    });
+
+    if (localReview.priority !== importedReview.priority) {
+      conflicts.push({
+        type: 'PRIORITY_CONFLICT',
+        title: '讲评优先级不一致',
+        description: `本地优先级：${localReview.priority}，导入包优先级：${importedReview.priority}`,
+        localPriority: localReview.priority,
+        importedPriority: importedReview.priority,
+      });
+    }
+
+    if (localReview.status !== importedReview.status) {
+      conflicts.push({
+        type: 'STATUS_CONFLICT',
+        title: '已讲状态不一致',
+        description: `本地状态：${localReview.status}，导入包状态：${importedReview.status}`,
+        localStatus: localReview.status,
+        importedStatus: importedReview.status,
+      });
+    }
+
+    if (localReview.assignee !== importedReview.assignee) {
+      conflicts.push({
+        type: 'ASSIGNEE_CONFLICT',
+        title: '负责人不一致',
+        description: `本地负责人：${localReview.assignee || '（未设置）'}，导入包负责人：${importedReview.assignee || '（未设置）'}`,
+        localAssignee: localReview.assignee,
+        importedAssignee: importedReview.assignee,
+      });
+    }
+
+    if (localReview.remark !== importedReview.remark) {
+      conflicts.push({
+        type: 'REMARK_CONFLICT',
+        title: '备注不一致',
+        description: `本地备注与导入包备注内容不同`,
+        localRemark: localReview.remark,
+        importedRemark: importedReview.remark,
+      });
+    }
+  }
+
+  const localVersion = getReviewListStoreVersion();
+  if (importedReviewVersion !== undefined && importedReviewVersion !== localVersion) {
+    conflicts.push({
+      type: 'REVIEW_VERSION_DIFF',
+      title: '待讲清单版本不一致',
+      description: `本地清单版本 v${localVersion}，导入包清单版本 v${importedReviewVersion}`,
+      reviewVersionLocal: localVersion,
+      reviewVersionImported: importedReviewVersion,
     });
   }
 

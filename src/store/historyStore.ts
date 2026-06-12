@@ -10,6 +10,8 @@ import {
   clearImportLog,
   clearAnnotationImportLog,
   clearCaseImportLog,
+  clearAllReviewList,
+  clearReviewListImportLog,
 } from '../utils/storage';
 
 interface HistoryState {
@@ -50,10 +52,12 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
     clearStorageHistory();
     clearAllCases();
     clearAllAnnotations();
+    clearAllReviewList();
     clearHistoryFilters();
     clearImportLog();
     clearAnnotationImportLog();
     clearCaseImportLog();
+    clearReviewListImportLog();
     set({
       records: [],
       filterLevelId: null,

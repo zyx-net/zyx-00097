@@ -1,18 +1,20 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock, Download, FileText, ScrollText, X, MessageSquare, Star, Archive, BookMarked, Tag, Filter } from 'lucide-react';
+import { ArrowLeft, Trash2, Search, ChevronDown, ChevronUp, Calendar, Award, Activity, Clock, Download, FileText, ScrollText, X, MessageSquare, Star, Archive, BookMarked, Tag, Filter, ListChecks, User, Flag, CheckCircle } from 'lucide-react';
 import { useHistoryStore } from '../store/historyStore';
 import { useConfigStore } from '../store/configStore';
 import { useCaseStore } from '../store/caseStore';
+import { useReviewListStore } from '../store/reviewListStore';
 import { Timeline } from '../components/result/Timeline';
 import { ErrorTable } from '../components/result/ErrorTable';
 import { ImportButton } from '../components/result/ImportButton';
 import { CaseEditDialog } from '../components/result/CaseEditDialog';
-import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR, type Difficulty, type CaseInfo } from '../types';
+import { AddReviewListDialog } from '../components/result/AddReviewListDialog';
+import { DIFFICULTY_LABEL, DIFFICULTY_LABEL_COLOR, type Difficulty, type CaseInfo, type ReviewStatus, REVIEW_PRIORITY_LABEL, REVIEW_PRIORITY_COLOR } from '../types';
 import { classNames, formatTime, formatDateTime } from '../utils/uuid';
-import { computeReplayHash, loadImportLog, loadAnnotationImportLog, loadCaseImportLog, getAnnotationCount, loadHistoryFilters, saveHistoryFilters } from '../utils/storage';
+import { computeReplayHash, loadImportLog, loadAnnotationImportLog, loadCaseImportLog, loadReviewListImportLog, getAnnotationCount, loadHistoryFilters, saveHistoryFilters } from '../utils/storage';
 import { downloadReplayJSON, downloadReplayTXT } from '../utils/export';
-import type { ImportLogEntry, AnnotationImportLogEntry, CaseImportLogEntry } from '../types';
+import type { ImportLogEntry, AnnotationImportLogEntry, CaseImportLogEntry, ReviewListImportLogEntry } from '../types';
 
 export default function HistoryPage() {
   const navigate = useNavigate();
@@ -20,12 +22,14 @@ export default function HistoryPage() {
     setFilterLevel, setFilterDifficulty, setSearch, setExpanded, getRecord, refresh, clearAll } = useHistoryStore();
   const { levels, init, getLevel } = useConfigStore();
   const { caseMap, allTags, refresh: refreshCases, getCase, openEditDialog, hasCase } = useCaseStore();
+  const { itemMap, pendingCount, reviewedCount, refresh: refreshReviewList, getItem, hasItem, openAddDialog, markReviewed, markPending } = useReviewListStore();
 
   const [filterTags, setFilterTags] = React.useState<string[]>([]);
   const [filterHasAnnotations, setFilterHasAnnotations] = React.useState<boolean | null>(null);
   const [filterImported, setFilterImported] = React.useState<boolean | null>(null);
   const [filterRecommended, setFilterRecommended] = React.useState<boolean | null>(null);
   const [filterArchived, setFilterArchived] = React.useState<boolean | null>(null);
+  const [filterReviewStatus, setFilterReviewStatus] = React.useState<ReviewStatus | 'ALL' | null>(null);
   const [showFilterPanel, setShowFilterPanel] = React.useState(false);
 
   const [showClearConfirm, setShowClearConfirm] = React.useState(false);
@@ -35,6 +39,7 @@ export default function HistoryPage() {
     init();
     refresh();
     refreshCases();
+    refreshReviewList();
     const saved = loadHistoryFilters();
     if (saved.filterLevelId) setFilterLevel(saved.filterLevelId);
     if (saved.filterDifficulty) setFilterDifficulty(saved.filterDifficulty);
@@ -44,7 +49,8 @@ export default function HistoryPage() {
     if (saved.filterImported !== null) setFilterImported(saved.filterImported);
     if (saved.filterRecommended !== null) setFilterRecommended(saved.filterRecommended);
     if (saved.filterArchived !== null) setFilterArchived(saved.filterArchived);
-  }, [init, refresh, refreshCases, setFilterLevel, setFilterDifficulty, setSearch]);
+    if (saved.filterReviewStatus) setFilterReviewStatus(saved.filterReviewStatus);
+  }, [init, refresh, refreshCases, refreshReviewList, setFilterLevel, setFilterDifficulty, setSearch]);
 
   useEffect(() => {
     saveHistoryFilters({
@@ -56,8 +62,9 @@ export default function HistoryPage() {
       filterImported,
       filterRecommended,
       filterArchived,
+      filterReviewStatus,
     });
-  }, [filterLevelId, filterDifficulty, searchKeyword, filterTags, filterHasAnnotations, filterImported, filterRecommended, filterArchived]);
+  }, [filterLevelId, filterDifficulty, searchKeyword, filterTags, filterHasAnnotations, filterImported, filterRecommended, filterArchived, filterReviewStatus]);
 
   const filtered = React.useMemo(() => {
     return records.filter((r) => {
@@ -98,9 +105,14 @@ export default function HistoryPage() {
         const caseInfo = caseMap[r.id];
         if (filterArchived !== !!(caseInfo?.archived)) return false;
       }
+      if (filterReviewStatus && filterReviewStatus !== 'ALL') {
+        const reviewItem = itemMap[r.id];
+        if (!reviewItem) return false;
+        if (reviewItem.status !== filterReviewStatus) return false;
+      }
       return true;
     });
-  }, [records, filterLevelId, filterDifficulty, searchKeyword, filterTags, filterHasAnnotations, filterImported, filterRecommended, filterArchived, caseMap]);
+  }, [records, filterLevelId, filterDifficulty, searchKeyword, filterTags, filterHasAnnotations, filterImported, filterRecommended, filterArchived, filterReviewStatus, caseMap, itemMap]);
 
   const expandedRecord = expandedRecordId ? getRecord(expandedRecordId) : null;
   const expandedLevel = expandedRecord ? levels.find((l) => l.id === expandedRecord.levelId) : null;
@@ -112,6 +124,7 @@ export default function HistoryPage() {
     filterImported !== null,
     filterRecommended !== null,
     filterArchived !== null,
+    filterReviewStatus !== null,
   ].filter(Boolean).length;
 
   const clearAllFilters = () => {
@@ -120,6 +133,7 @@ export default function HistoryPage() {
     setFilterImported(null);
     setFilterRecommended(null);
     setFilterArchived(null);
+    setFilterReviewStatus(null);
   };
 
   const toggleTagFilter = (tag: string) => {
@@ -137,9 +151,9 @@ export default function HistoryPage() {
               <ArrowLeft size={16} /> 返回
             </button>
             <div>
-              <h1 className="font-title text-2xl text-slate-900">历史成绩 & 案例夹</h1>
+              <h1 className="font-title text-2xl text-slate-900">历史成绩 & 案例夹 & 待讲清单</h1>
               <p className="text-sm text-slate-500">
-                共 {records.length} 条训练记录 · {Object.keys(caseMap).length} 个案例
+                共 {records.length} 条训练记录 · {Object.keys(caseMap).length} 个案例 · 待讲 {pendingCount} · 已讲 {reviewedCount}
               </p>
             </div>
           </div>
@@ -214,6 +228,43 @@ export default function HistoryPage() {
             </button>
           </div>
 
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="text-xs text-slate-500 mr-1"><ListChecks size={12} className="inline" /> 待讲清单：</span>
+            <button
+              onClick={() => setFilterReviewStatus(null)}
+              className={classNames(
+                'text-xs px-3 py-1.5 rounded-full border transition-all',
+                filterReviewStatus === null
+                  ? 'bg-sky-500 text-white border-sky-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-sky-300'
+              )}
+            >
+              全部
+            </button>
+            <button
+              onClick={() => setFilterReviewStatus('PENDING')}
+              className={classNames(
+                'text-xs px-3 py-1.5 rounded-full border transition-all',
+                filterReviewStatus === 'PENDING'
+                  ? 'bg-amber-500 text-white border-amber-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300'
+              )}
+            >
+              待讲 {pendingCount > 0 && `(${pendingCount})`}
+            </button>
+            <button
+              onClick={() => setFilterReviewStatus('REVIEWED')}
+              className={classNames(
+                'text-xs px-3 py-1.5 rounded-full border transition-all',
+                filterReviewStatus === 'REVIEWED'
+                  ? 'bg-emerald-500 text-white border-emerald-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-300'
+              )}
+            >
+              已讲 {reviewedCount > 0 && `(${reviewedCount})`}
+            </button>
+          </div>
+
           {showFilterPanel && (
             <div className="pt-3 border-t border-slate-100 space-y-3">
               {allTags.length > 0 && (
@@ -240,7 +291,7 @@ export default function HistoryPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                 <FilterToggle
                   label="含教练批注"
                   icon={<MessageSquare size={12} />}
@@ -264,6 +315,10 @@ export default function HistoryPage() {
                   icon={<Archive size={12} />}
                   value={filterArchived}
                   onChange={setFilterArchived}
+                />
+                <ReviewStatusToggle
+                  value={filterReviewStatus}
+                  onChange={setFilterReviewStatus}
                 />
               </div>
 
@@ -374,6 +429,19 @@ export default function HistoryPage() {
                             <Archive size={10} className="inline mr-0.5" />已归档
                           </span>
                         )}
+                        {(() => {
+                          const reviewItem = itemMap[r.id];
+                          if (!reviewItem) return null;
+                          const statusLabel = reviewItem.status === 'PENDING' ? '待讲' : '已讲';
+                          const statusIcon = reviewItem.status === 'PENDING' ? <ListChecks size={10} className="inline mr-0.5" /> : <CheckCircle size={10} className="inline mr-0.5" />;
+                          const statusColor = reviewItem.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                          return (
+                            <span className={classNames('chip text-[10px] font-bold', statusColor)} title={`优先级: ${REVIEW_PRIORITY_LABEL[reviewItem.priority]} · 负责人: ${reviewItem.assignee || '未指定'} · 备注: ${reviewItem.remark || '无'}`}>
+                              {statusIcon}{statusLabel} · <Flag size={10} className="inline mr-0.5" />{REVIEW_PRIORITY_LABEL[reviewItem.priority]}
+                              {reviewItem.assignee && <span className="ml-0.5">· <User size={10} className="inline mr-0.5" />{reviewItem.assignee}</span>}
+                            </span>
+                          );
+                        })()}
                       </div>
 
                       {caseInfo?.description && (
@@ -424,6 +492,41 @@ export default function HistoryPage() {
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAddDialog(r.id);
+                        }}
+                        className={classNames(
+                          'btn-ghost text-xs',
+                          hasItem(r.id) && 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                        )}
+                        title={hasItem(r.id) ? '编辑清单' : '加入待讲清单'}
+                      >
+                        <ListChecks size={14} />
+                        {hasItem(r.id) ? '编辑清单' : '加入待讲'}
+                      </button>
+                      {hasItem(r.id) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const item = getItem(r.id);
+                            if (item?.status === 'PENDING') {
+                              markReviewed(r.id);
+                            } else {
+                              markPending(r.id);
+                            }
+                          }}
+                          className="btn-ghost text-xs"
+                          title={getItem(r.id)?.status === 'PENDING' ? '标记已讲' : '撤回到待讲'}
+                        >
+                          {getItem(r.id)?.status === 'PENDING' ? (
+                            <><CheckCircle size={14} /> 标记已讲</>
+                          ) : (
+                            <><ListChecks size={14} /> 撤回到待讲</>
+                          )}
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -587,6 +690,7 @@ export default function HistoryPage() {
       {showImportLog && <ImportLogDialog onClose={() => setShowImportLog(false)} />}
 
       <CaseEditDialog />
+      <AddReviewListDialog />
     </div>
   );
 }
@@ -628,21 +732,65 @@ function FilterToggle({
   );
 }
 
+function ReviewStatusToggle({
+  value,
+  onChange,
+}: {
+  value: ReviewStatus | 'ALL' | null;
+  onChange: (v: ReviewStatus | 'ALL' | null) => void;
+}) {
+  const cycle = () => {
+    if (value === null) onChange('PENDING');
+    else if (value === 'PENDING') onChange('REVIEWED');
+    else if (value === 'REVIEWED') onChange('ALL');
+    else onChange(null);
+  };
+
+  let labelText = '全部待讲状态';
+  if (value === 'PENDING') labelText = '待讲';
+  else if (value === 'REVIEWED') labelText = '已讲';
+  else if (value === 'ALL') labelText = '仅清单内';
+
+  const colorCls = value === null
+    ? 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+    : value === 'PENDING'
+      ? 'bg-amber-50 border-amber-300 text-amber-700'
+      : value === 'REVIEWED'
+        ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+        : 'bg-sky-50 border-sky-300 text-sky-700';
+
+  return (
+    <button
+      onClick={cycle}
+      className={classNames(
+        'text-xs px-3 py-2 rounded-lg border transition-all text-left flex items-center gap-2',
+        colorCls
+      )}
+    >
+      <ListChecks size={12} />
+      {labelText}
+    </button>
+  );
+}
+
 type UnifiedImportLog =
   | { kind: 'RECORD'; entry: ImportLogEntry }
   | { kind: 'ANNOTATION'; entry: AnnotationImportLogEntry }
-  | { kind: 'CASE'; entry: CaseImportLogEntry };
+  | { kind: 'CASE'; entry: CaseImportLogEntry }
+  | { kind: 'REVIEW_LIST'; entry: ReviewListImportLogEntry };
 
 const KIND_LABEL: Record<UnifiedImportLog['kind'], string> = {
   RECORD: '记录',
   ANNOTATION: '批注',
   CASE: '案例',
+  REVIEW_LIST: '待讲清单',
 };
 
 const KIND_COLOR: Record<UnifiedImportLog['kind'], string> = {
   RECORD: 'bg-slate-100 text-slate-700 border-slate-200',
   ANNOTATION: 'bg-violet-50 text-violet-700 border-violet-200',
   CASE: 'bg-amber-50 text-amber-700 border-amber-200',
+  REVIEW_LIST: 'bg-sky-50 text-sky-700 border-sky-200',
 };
 
 function ImportLogDialog({ onClose }: { onClose: () => void }) {
@@ -652,7 +800,8 @@ function ImportLogDialog({ onClose }: { onClose: () => void }) {
     const recordLogs: UnifiedImportLog[] = loadImportLog().map((e) => ({ kind: 'RECORD', entry: e }));
     const annotationLogs: UnifiedImportLog[] = loadAnnotationImportLog().map((e) => ({ kind: 'ANNOTATION', entry: e }));
     const caseLogs: UnifiedImportLog[] = loadCaseImportLog().map((e) => ({ kind: 'CASE', entry: e }));
-    const combined = [...recordLogs, ...annotationLogs, ...caseLogs].sort(
+    const reviewListLogs: UnifiedImportLog[] = loadReviewListImportLog().map((e) => ({ kind: 'REVIEW_LIST', entry: e }));
+    const combined = [...recordLogs, ...annotationLogs, ...caseLogs, ...reviewListLogs].sort(
       (a, b) => b.entry.timestamp - a.entry.timestamp
     );
     setLogs(combined);
@@ -721,6 +870,12 @@ function ImportLogDialog({ onClose }: { onClose: () => void }) {
                             <span>
                               案例: {entry.hasLocalCase ? '本地有' : '本地无'} → {entry.finalHasCase ? '有' : '无'}
                               {entry.importedHasCase ? ' (导入包含)' : ' (导入包不含)'}
+                            </span>
+                          )}
+                          {'hasLocalReview' in entry && (
+                            <span>
+                              清单: {entry.hasLocalReview ? '本地有' : '本地无'} → {entry.resolution || '未处理'}
+                              {entry.importedHasReview ? ' (导入包含)' : ' (导入包不含)'}
                             </span>
                           )}
                         </div>

@@ -12,8 +12,12 @@ import type {
   CaseStore,
   CaseImportLogEntry,
   Difficulty,
+  ReviewListItem,
+  ReviewListStore,
+  ReviewListImportLogEntry,
+  ReviewStatus,
 } from '../types';
-import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG, MAX_ANNOTATION_IMPORT_LOG, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT, MAX_CASE_IMPORT_LOG } from '../types';
+import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG, MAX_ANNOTATION_IMPORT_LOG, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT, MAX_CASE_IMPORT_LOG, REVIEW_VERSION_CURRENT, MAX_REVIEW_LIST_IMPORT_LOG } from '../types';
 import { generateUUID } from './uuid';
 
 const read = <T>(key: string, fallback: T): T => {
@@ -519,6 +523,7 @@ export interface HistoryFilters {
   filterImported: boolean | null;
   filterRecommended: boolean | null;
   filterArchived: boolean | null;
+  filterReviewStatus: ReviewStatus | 'ALL' | null;
 }
 
 export function loadHistoryFilters(): HistoryFilters {
@@ -533,6 +538,7 @@ export function loadHistoryFilters(): HistoryFilters {
       filterImported: null,
       filterRecommended: null,
       filterArchived: null,
+      filterReviewStatus: null,
     };
   }
   return raw;
@@ -544,4 +550,168 @@ export function saveHistoryFilters(filters: HistoryFilters): void {
 
 export function clearHistoryFilters(): void {
   localStorage.removeItem(STORAGE_KEYS.HISTORY_FILTERS);
+}
+
+function loadReviewListStore(): ReviewListStore {
+  const raw = read<ReviewListStore | null>(STORAGE_KEYS.REVIEW_LIST, null);
+  if (!raw || !raw.items) {
+    return { version: REVIEW_VERSION_CURRENT, items: {} };
+  }
+  return raw;
+}
+
+function writeReviewListStore(store: ReviewListStore): void {
+  write(STORAGE_KEYS.REVIEW_LIST, store);
+}
+
+export function loadReviewList(): ReviewListItem[] {
+  const store = loadReviewListStore();
+  return Object.values(store.items);
+}
+
+export function loadReviewItem(recordId: string): ReviewListItem | null {
+  const store = loadReviewListStore();
+  return store.items[recordId] ?? null;
+}
+
+export function hasReviewItem(recordId: string): boolean {
+  return loadReviewItem(recordId) !== null;
+}
+
+export function getReviewListCount(): number {
+  return loadReviewList().length;
+}
+
+export function getPendingReviewCount(): number {
+  return loadReviewList().filter((item) => item.status === 'PENDING').length;
+}
+
+export function getReviewedCount(): number {
+  return loadReviewList().filter((item) => item.status === 'REVIEWED').length;
+}
+
+export function createReviewItem(
+  recordId: string,
+  data: Omit<ReviewListItem, 'recordId' | 'createdAt' | 'updatedAt' | 'version' | 'source'>
+): ReviewListItem {
+  const now = Date.now();
+  const full: ReviewListItem = {
+    ...data,
+    recordId,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    source: 'LOCAL',
+  };
+  const store = loadReviewListStore();
+  store.items[recordId] = full;
+  writeReviewListStore(store);
+  return full;
+}
+
+export function updateReviewItem(
+  recordId: string,
+  updates: Partial<Pick<ReviewListItem, 'status' | 'priority' | 'assignee' | 'remark'>>
+): ReviewListItem | null {
+  const existing = loadReviewItem(recordId);
+  if (!existing) return null;
+  const updated: ReviewListItem = {
+    ...existing,
+    ...updates,
+    updatedAt: Date.now(),
+    version: existing.version + 1,
+  };
+  const store = loadReviewListStore();
+  store.items[recordId] = updated;
+  writeReviewListStore(store);
+  return updated;
+}
+
+export function deleteReviewItem(recordId: string): boolean {
+  const store = loadReviewListStore();
+  if (!store.items[recordId]) return false;
+  delete store.items[recordId];
+  writeReviewListStore(store);
+  return true;
+}
+
+export function markAsReviewed(recordId: string): ReviewListItem | null {
+  return updateReviewItem(recordId, { status: 'REVIEWED' });
+}
+
+export function markAsPending(recordId: string): ReviewListItem | null {
+  return updateReviewItem(recordId, { status: 'PENDING' });
+}
+
+export function replaceReviewItem(recordId: string, item: ReviewListItem): void {
+  const store = loadReviewListStore();
+  store.items[recordId] = { ...item, source: 'IMPORTED' };
+  writeReviewListStore(store);
+}
+
+export function mergeReviewItem(recordId: string, incoming: ReviewListItem): ReviewListItem {
+  const local = loadReviewItem(recordId);
+  if (!local) {
+    const created: ReviewListItem = { ...incoming, source: 'IMPORTED' };
+    const store = loadReviewListStore();
+    store.items[recordId] = created;
+    writeReviewListStore(store);
+    return created;
+  }
+  const mergedRemark = local.remark && incoming.remark
+    ? `${local.remark}\n--- 导入备注 ---\n${incoming.remark}`
+    : local.remark || incoming.remark || '';
+  const merged: ReviewListItem = {
+    ...local,
+    priority: incoming.priority || local.priority,
+    assignee: incoming.assignee || local.assignee,
+    remark: mergedRemark,
+    status: incoming.status || local.status,
+    updatedAt: Date.now(),
+    version: local.version + 1,
+  };
+  const store = loadReviewListStore();
+  store.items[recordId] = merged;
+  writeReviewListStore(store);
+  return merged;
+}
+
+export function clearReviewListForRecord(recordId: string): void {
+  deleteReviewItem(recordId);
+}
+
+export function clearReviewItemForRecord(recordId: string): void {
+  deleteReviewItem(recordId);
+}
+
+export function clearAllReviewList(): void {
+  localStorage.removeItem(STORAGE_KEYS.REVIEW_LIST);
+}
+
+export function getReviewListStoreVersion(): number {
+  const store = loadReviewListStore();
+  return store.version;
+}
+
+export function loadReviewListImportLog(): ReviewListImportLogEntry[] {
+  const arr = read<ReviewListImportLogEntry[]>(STORAGE_KEYS.REVIEW_LIST_IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function appendReviewListImportLog(entry: Omit<ReviewListImportLogEntry, 'id' | 'timestamp'>): ReviewListImportLogEntry {
+  const full: ReviewListImportLogEntry = {
+    id: generateUUID(),
+    timestamp: Date.now(),
+    ...entry,
+  };
+  const list = loadReviewListImportLog();
+  list.unshift(full);
+  const trimmed = list.slice(0, MAX_REVIEW_LIST_IMPORT_LOG);
+  write(STORAGE_KEYS.REVIEW_LIST_IMPORT_LOG, trimmed);
+  return full;
+}
+
+export function clearReviewListImportLog(): void {
+  localStorage.removeItem(STORAGE_KEYS.REVIEW_LIST_IMPORT_LOG);
 }
