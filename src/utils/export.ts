@@ -1,7 +1,7 @@
 import type { GameRecord, Level, ScoreResult, CoachAnnotation } from '../types';
-import { CHANNEL_LABEL, DIFFICULTY_LABEL, ANNOTATION_SEVERITY_LABEL, CURRENT_EXPORT_VERSION, ANNOTATION_VERSION_CURRENT } from '../types';
+import { CHANNEL_LABEL, DIFFICULTY_LABEL, ANNOTATION_SEVERITY_LABEL, CURRENT_EXPORT_VERSION, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT } from '../types';
 import { formatDateTime, formatTime } from './uuid';
-import { computeReplayHash, loadAnnotations } from './storage';
+import { computeReplayHash, loadAnnotations, loadCase } from './storage';
 
 function downloadText(filename: string, content: string, mime = 'text/plain;charset=utf-8') {
   const blob = new Blob([content], { type: mime });
@@ -20,6 +20,7 @@ export function exportReplayJSON(
   record: GameRecord
 ): string {
   const annotations = loadAnnotations(record.id);
+  const caseInfo = loadCase(record.id);
   const payload = {
     exportVersion: CURRENT_EXPORT_VERSION,
     exportedAt: formatDateTime(Date.now()),
@@ -46,6 +47,7 @@ export function exportReplayJSON(
     session: record.sessionSnapshot,
     scoreResult: record.scoreSnapshot,
     ...(annotations.length > 0 ? { annotations, annotationVersion: ANNOTATION_VERSION_CURRENT } : {}),
+    ...(caseInfo ? { caseInfo, caseVersion: CASE_VERSION_CURRENT } : {}),
   };
   return JSON.stringify(payload, null, 2);
 }

@@ -286,6 +286,8 @@ export interface ReplayPackage {
   scoreResult: ScoreResult;
   annotations?: CoachAnnotation[];
   annotationVersion?: number;
+  caseInfo?: CaseInfo;
+  caseVersion?: number;
 }
 
 export interface AnnotationImportLogEntry {
@@ -374,6 +376,73 @@ export interface AnnotationImportResult {
   log: { action: string; detail: string; timestamp: number }[];
 }
 
+export const MAX_HISTORY = 200;
+export const MAX_IMPORT_LOG = 100;
+export const MAX_ANNOTATION_IMPORT_LOG = 100;
+export const SUPPORTED_EXPORT_VERSIONS = [1, 2] as const;
+export const CURRENT_EXPORT_VERSION = 2 as const;
+export const ANNOTATION_VERSION_CURRENT = 1 as const;
+
+export interface CaseInfo {
+  id: string;
+  recordId: string;
+  title: string;
+  description: string;
+  tags: string[];
+  recommended: boolean;
+  archived: boolean;
+  source: 'LOCAL' | 'IMPORTED';
+  createdAt: number;
+  updatedAt: number;
+  version: number;
+}
+
+export interface CaseStore {
+  version: number;
+  cases: Record<string, CaseInfo>;
+}
+
+export type CaseConflictType =
+  | 'HAS_LOCAL_CASE'
+  | 'TAG_CONFLICT'
+  | 'ARCHIVED_STATUS_CONFLICT'
+  | 'CASE_VERSION_DIFF';
+
+export interface CaseConflict {
+  type: CaseConflictType;
+  title: string;
+  description: string;
+  localCase?: CaseInfo;
+  importedCase?: CaseInfo;
+  localTags?: string[];
+  importedTags?: string[];
+  localArchived?: boolean;
+  importedArchived?: boolean;
+  caseVersionLocal?: number;
+  caseVersionImported?: number;
+}
+
+export type CaseConflictResolution = 'KEEP_LOCAL' | 'MERGE' | 'OVERWRITE_LOCAL' | 'SKIP';
+
+export interface CaseImportLogEntry {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  recordId: string;
+  success: boolean;
+  hasLocalCase: boolean;
+  importedHasCase: boolean;
+  finalHasCase: boolean;
+  resolution?: CaseConflictResolution;
+  conflicts?: string[];
+  errors?: string[];
+  tagsAdded?: string[];
+  tagsRemoved?: string[];
+}
+
+export const CASE_VERSION_CURRENT = 1 as const;
+export const MAX_CASE_IMPORT_LOG = 100;
+
 export const STORAGE_KEYS = {
   IN_PROGRESS: 'triage:in-progress',
   HISTORY: 'triage:history',
@@ -381,16 +450,13 @@ export const STORAGE_KEYS = {
   READONLY_RECORDS: 'triage:readonly-records',
   ANNOTATIONS: 'triage:annotations',
   ANNOTATION_IMPORT_LOG: 'triage:annotation-import-log',
+  CASES: 'triage:cases',
+  CASE_IMPORT_LOG: 'triage:case-import-log',
+  HISTORY_FILTERS: 'triage:history-filters',
   STORAGE_VERSION: 1,
   ANNOTATION_VERSION: 1,
+  CASE_VERSION: 1,
 } as const;
-
-export const MAX_HISTORY = 200;
-export const MAX_IMPORT_LOG = 100;
-export const MAX_ANNOTATION_IMPORT_LOG = 100;
-export const SUPPORTED_EXPORT_VERSIONS = [1, 2] as const;
-export const CURRENT_EXPORT_VERSION = 2 as const;
-export const ANNOTATION_VERSION_CURRENT = 1 as const;
 
 export const ERROR_CODES = {
   E_PAUSED_LOCKED: 'E_PAUSED_LOCKED',

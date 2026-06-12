@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import type { GameRecord, Difficulty } from '../types';
-import { loadHistory, getHistoryById, clearHistory as clearStorageHistory } from '../utils/storage';
+import {
+  loadHistory,
+  getHistoryById,
+  clearHistory as clearStorageHistory,
+  clearAllCases,
+  clearHistoryFilters,
+  clearAllAnnotations,
+  clearImportLog,
+  clearAnnotationImportLog,
+  clearCaseImportLog,
+} from '../utils/storage';
 
 interface HistoryState {
   records: GameRecord[];
@@ -38,6 +48,18 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
   clearAll: () => {
     clearStorageHistory();
-    set({ records: [] });
+    clearAllCases();
+    clearAllAnnotations();
+    clearHistoryFilters();
+    clearImportLog();
+    clearAnnotationImportLog();
+    clearCaseImportLog();
+    set({
+      records: [],
+      filterLevelId: null,
+      filterDifficulty: null,
+      searchKeyword: '',
+      expandedRecordId: null,
+    });
   },
 }));

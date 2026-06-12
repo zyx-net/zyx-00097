@@ -11,9 +11,11 @@ import type {
   ScoreResult,
   CoachAnnotation,
   AnnotationConflict,
+  CaseInfo,
+  CaseConflict,
 } from '../types';
-import { SUPPORTED_EXPORT_VERSIONS, ANNOTATION_VERSION_CURRENT } from '../types';
-import { computeReplayHash, normalizeSession, loadAnnotations, getAnnotationStoreVersion } from './storage';
+import { SUPPORTED_EXPORT_VERSIONS, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT } from '../types';
+import { computeReplayHash, normalizeSession, loadAnnotations, getAnnotationStoreVersion, loadCase, getCaseStoreVersion } from './storage';
 import { generateUUID } from './uuid';
 import { calculateScore } from './scoring';
 
@@ -416,6 +418,65 @@ export function detectAnnotationConflicts(
       description: `本地批注版本 v${localVersion}，导入包批注版本 v${importedAnnotationVersion}，合并后可能出现格式差异`,
       annotationVersionLocal: localVersion,
       annotationVersionImported: importedAnnotationVersion,
+    });
+  }
+
+  return conflicts;
+}
+
+export function detectCaseConflicts(
+  recordId: string,
+  importedCase: CaseInfo | undefined,
+  importedCaseVersion: number | undefined
+): CaseConflict[] {
+  const conflicts: CaseConflict[] = [];
+  if (!importedCase) return conflicts;
+
+  const localCase = loadCase(recordId);
+
+  if (localCase) {
+    conflicts.push({
+      type: 'HAS_LOCAL_CASE',
+      title: '本地已有案例',
+      description: `该回放记录本地已有案例，导入包也携带案例数据，请选择处理方式`,
+      localCase,
+      importedCase,
+    });
+
+    const localTagSet = new Set(localCase.tags);
+    const importedTagSet = new Set(importedCase.tags);
+    const hasTagDiff = localCase.tags.length !== importedCase.tags.length ||
+      !localCase.tags.every((t) => importedTagSet.has(t)) ||
+      !importedCase.tags.every((t) => localTagSet.has(t));
+    if (hasTagDiff) {
+      conflicts.push({
+        type: 'TAG_CONFLICT',
+        title: '案例标签不一致',
+        description: `本地有 ${localCase.tags.length} 个标签，导入包有 ${importedCase.tags.length} 个标签`,
+        localTags: localCase.tags,
+        importedTags: importedCase.tags,
+      });
+    }
+
+    if (localCase.archived !== importedCase.archived) {
+      conflicts.push({
+        type: 'ARCHIVED_STATUS_CONFLICT',
+        title: '归档状态不一致',
+        description: `本地${localCase.archived ? '已归档' : '未归档'}，导入包${importedCase.archived ? '已归档' : '未归档'}`,
+        localArchived: localCase.archived,
+        importedArchived: importedCase.archived,
+      });
+    }
+  }
+
+  const localVersion = getCaseStoreVersion();
+  if (importedCaseVersion !== undefined && importedCaseVersion !== localVersion) {
+    conflicts.push({
+      type: 'CASE_VERSION_DIFF',
+      title: '案例版本不一致',
+      description: `本地案例版本 v${localVersion}，导入包案例版本 v${importedCaseVersion}`,
+      caseVersionLocal: localVersion,
+      caseVersionImported: importedCaseVersion,
     });
   }
 

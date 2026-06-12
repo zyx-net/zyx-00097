@@ -8,8 +8,12 @@ import type {
   CoachAnnotation,
   AnnotationStore,
   AnnotationImportLogEntry,
+  CaseInfo,
+  CaseStore,
+  CaseImportLogEntry,
+  Difficulty,
 } from '../types';
-import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG, MAX_ANNOTATION_IMPORT_LOG, ANNOTATION_VERSION_CURRENT } from '../types';
+import { STORAGE_KEYS, MAX_HISTORY, MAX_IMPORT_LOG, MAX_ANNOTATION_IMPORT_LOG, ANNOTATION_VERSION_CURRENT, CASE_VERSION_CURRENT, MAX_CASE_IMPORT_LOG } from '../types';
 import { generateUUID } from './uuid';
 
 const read = <T>(key: string, fallback: T): T => {
@@ -355,4 +359,189 @@ export function appendAnnotationImportLog(entry: Omit<AnnotationImportLogEntry, 
 
 export function clearAnnotationImportLog(): void {
   localStorage.removeItem(STORAGE_KEYS.ANNOTATION_IMPORT_LOG);
+}
+
+function loadCaseStore(): CaseStore {
+  const raw = read<CaseStore | null>(STORAGE_KEYS.CASES, null);
+  if (!raw || !raw.cases) {
+    return { version: CASE_VERSION_CURRENT, cases: {} };
+  }
+  return raw;
+}
+
+function writeCaseStore(store: CaseStore): void {
+  write(STORAGE_KEYS.CASES, store);
+}
+
+export function loadCase(recordId: string): CaseInfo | null {
+  const store = loadCaseStore();
+  return store.cases[recordId] ?? null;
+}
+
+export function saveCase(recordId: string, caseInfo: CaseInfo): void {
+  const store = loadCaseStore();
+  store.cases[recordId] = caseInfo;
+  writeCaseStore(store);
+}
+
+export function createCase(
+  recordId: string,
+  data: Omit<CaseInfo, 'id' | 'recordId' | 'createdAt' | 'updatedAt' | 'version' | 'source'>
+): CaseInfo {
+  const now = Date.now();
+  const full: CaseInfo = {
+    ...data,
+    id: generateUUID(),
+    recordId,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    source: 'LOCAL',
+  };
+  saveCase(recordId, full);
+  return full;
+}
+
+export function updateCase(
+  recordId: string,
+  updates: Partial<Pick<CaseInfo, 'title' | 'description' | 'tags' | 'recommended' | 'archived'>>
+): CaseInfo | null {
+  const existing = loadCase(recordId);
+  if (!existing) return null;
+  const updated: CaseInfo = {
+    ...existing,
+    ...updates,
+    updatedAt: Date.now(),
+    version: existing.version + 1,
+  };
+  saveCase(recordId, updated);
+  return updated;
+}
+
+export function deleteCase(recordId: string): boolean {
+  const store = loadCaseStore();
+  if (!store.cases[recordId]) return false;
+  delete store.cases[recordId];
+  writeCaseStore(store);
+  return true;
+}
+
+export function hasCase(recordId: string): boolean {
+  return loadCase(recordId) !== null;
+}
+
+export function getAllCases(): CaseInfo[] {
+  const store = loadCaseStore();
+  return Object.values(store.cases);
+}
+
+export function getCaseCount(): number {
+  return getAllCases().length;
+}
+
+export function getCaseTags(): string[] {
+  const cases = getAllCases();
+  const tagSet = new Set<string>();
+  for (const c of cases) {
+    for (const tag of c.tags) tagSet.add(tag);
+  }
+  return [...tagSet].sort();
+}
+
+export function replaceCase(recordId: string, caseInfo: CaseInfo): void {
+  saveCase(recordId, { ...caseInfo, source: 'IMPORTED' });
+}
+
+export function mergeCase(recordId: string, incoming: CaseInfo): CaseInfo {
+  const local = loadCase(recordId);
+  if (!local) {
+    const created: CaseInfo = { ...incoming, source: 'IMPORTED' };
+    saveCase(recordId, created);
+    return created;
+  }
+  const mergedTags = Array.from(new Set([...local.tags, ...incoming.tags])).sort();
+  const merged: CaseInfo = {
+    ...local,
+    title: incoming.title || local.title,
+    description: incoming.description || local.description,
+    tags: mergedTags,
+    recommended: local.recommended || incoming.recommended,
+    archived: local.archived && incoming.archived,
+    updatedAt: Date.now(),
+    version: local.version + 1,
+  };
+  saveCase(recordId, merged);
+  return merged;
+}
+
+export function clearCasesForRecord(recordId: string): void {
+  deleteCase(recordId);
+}
+
+export function clearAllCases(): void {
+  localStorage.removeItem(STORAGE_KEYS.CASES);
+}
+
+export function getCaseStoreVersion(): number {
+  const store = loadCaseStore();
+  return store.version;
+}
+
+export function loadCaseImportLog(): CaseImportLogEntry[] {
+  const arr = read<CaseImportLogEntry[]>(STORAGE_KEYS.CASE_IMPORT_LOG, []);
+  if (!Array.isArray(arr)) return [];
+  return arr.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+export function appendCaseImportLog(entry: Omit<CaseImportLogEntry, 'id' | 'timestamp'>): CaseImportLogEntry {
+  const full: CaseImportLogEntry = {
+    id: generateUUID(),
+    timestamp: Date.now(),
+    ...entry,
+  };
+  const list = loadCaseImportLog();
+  list.unshift(full);
+  const trimmed = list.slice(0, MAX_CASE_IMPORT_LOG);
+  write(STORAGE_KEYS.CASE_IMPORT_LOG, trimmed);
+  return full;
+}
+
+export function clearCaseImportLog(): void {
+  localStorage.removeItem(STORAGE_KEYS.CASE_IMPORT_LOG);
+}
+
+export interface HistoryFilters {
+  filterLevelId: string | null;
+  filterDifficulty: Difficulty | null;
+  searchKeyword: string;
+  filterTags: string[];
+  filterHasAnnotations: boolean | null;
+  filterImported: boolean | null;
+  filterRecommended: boolean | null;
+  filterArchived: boolean | null;
+}
+
+export function loadHistoryFilters(): HistoryFilters {
+  const raw = read<HistoryFilters | null>(STORAGE_KEYS.HISTORY_FILTERS, null);
+  if (!raw) {
+    return {
+      filterLevelId: null,
+      filterDifficulty: null,
+      searchKeyword: '',
+      filterTags: [],
+      filterHasAnnotations: null,
+      filterImported: null,
+      filterRecommended: null,
+      filterArchived: null,
+    };
+  }
+  return raw;
+}
+
+export function saveHistoryFilters(filters: HistoryFilters): void {
+  write(STORAGE_KEYS.HISTORY_FILTERS, filters);
+}
+
+export function clearHistoryFilters(): void {
+  localStorage.removeItem(STORAGE_KEYS.HISTORY_FILTERS);
 }

@@ -9,6 +9,9 @@ import type {
   CoachAnnotation,
   AnnotationConflict,
   AnnotationConflictResolution,
+  CaseInfo,
+  CaseConflict,
+  CaseConflictResolution,
   ReplayPackage,
 } from '../../types';
 import {
@@ -16,6 +19,7 @@ import {
   applyResolution,
   readFileAsJSON,
   detectAnnotationConflicts,
+  detectCaseConflicts,
 } from '../../utils/import';
 import {
   upsertHistory,
@@ -26,10 +30,17 @@ import {
   mergeAnnotations,
   appendAnnotationImportLog,
   clearAnnotationsForRecord,
+  hasCase,
+  replaceCase,
+  mergeCase,
+  appendCaseImportLog,
+  clearCasesForRecord,
 } from '../../utils/storage';
 import { ImportConflictDialog } from './ImportConflictDialog';
 import { AnnotationConflictDialog } from './AnnotationConflictDialog';
+import { CaseConflictDialog } from './CaseConflictDialog';
 import { useAnnotationStore } from '../../store/annotationStore';
+import { useCaseStore } from '../../store/caseStore';
 import { classNames } from '../../utils/uuid';
 
 interface ImportButtonProps {
@@ -60,66 +71,67 @@ export function ImportButton({
   const [busy, setBusy] = React.useState(false);
   const [conflictOpen, setConflictOpen] = React.useState(false);
   const [annotationConflictOpen, setAnnotationConflictOpen] = React.useState(false);
+  const [caseConflictOpen, setCaseConflictOpen] = React.useState(false);
   const [pendingResult, setPendingResult] = React.useState<ImportValidationResult | null>(null);
   const [pendingFileName, setPendingFileName] = React.useState<string>('');
   const [pendingAnnotations, setPendingAnnotations] = React.useState<CoachAnnotation[] | null>(null);
   const [pendingAnnotationConflicts, setPendingAnnotationConflicts] = React.useState<AnnotationConflict[]>([]);
+  const [pendingCase, setPendingCase] = React.useState<CaseInfo | null>(null);
+  const [pendingCaseConflicts, setPendingCaseConflicts] = React.useState<CaseConflict[]>([]);
   const [pendingFinalRecord, setPendingFinalRecord] = React.useState<GameRecord | null>(null);
+  const [pendingAfterAnnotations, setPendingAfterAnnotations] = React.useState(false);
   const [toast, setToast] = React.useState<ToastState | null>(null);
 
   const openConflictDialog = useAnnotationStore((s) => s.openConflictDialog);
+  const openCaseConflictDialog = useCaseStore((s) => s.openConflictDialog);
 
   const showToast = React.useCallback((t: ToastState) => {
     setToast(t);
     setTimeout(() => setToast(null), 5000);
   }, []);
 
-  const handleAnnotationsDirect = React.useCallback(
+  const handleCaseDirect = React.useCallback(
     (
       recordId: string,
-      annotations: CoachAnnotation[] | undefined,
+      importedCase: CaseInfo | undefined,
       fileName: string
     ) => {
-      if (!annotations || annotations.length === 0) {
-        appendAnnotationImportLog({
+      if (!importedCase) {
+        appendCaseImportLog({
           fileName,
           recordId,
           success: true,
-          localCountBefore: loadAnnotations(recordId).length,
-          importedCount: 0,
-          finalCount: loadAnnotations(recordId).length,
+          hasLocalCase: hasCase(recordId),
+          importedHasCase: false,
+          finalHasCase: hasCase(recordId),
         });
         return;
       }
 
-      const annConflicts = detectAnnotationConflicts(recordId, annotations, 1);
-      const localCountBefore = loadAnnotations(recordId).length;
+      const caseConflicts = detectCaseConflicts(recordId, importedCase, 1);
+      const hasLocal = hasCase(recordId);
 
-      if (annConflicts.length > 0) {
-        setPendingAnnotations(annotations);
-        setPendingAnnotationConflicts(annConflicts);
-        setAnnotationConflictOpen(true);
-        setBusy(false);
-        openConflictDialog(
-          annConflicts,
-          annotations,
-          recordId,
-          fileName
-        );
+      if (caseConflicts.length > 0) {
+        setPendingCase(importedCase);
+        setPendingCaseConflicts(caseConflicts);
+        setCaseConflictOpen(true);
+        setPendingFileName(fileName);
+        openCaseConflictDialog(caseConflicts, importedCase, recordId, fileName);
         return;
       }
 
-      const merged = mergeAnnotations(recordId, annotations.map((a) => ({ ...a, source: 'IMPORTED' as const })));
-      appendAnnotationImportLog({
+      const merged = mergeCase(recordId, importedCase);
+      appendCaseImportLog({
         fileName,
         recordId,
         success: true,
-        localCountBefore,
-        importedCount: annotations.length,
-        finalCount: merged.length,
+        hasLocalCase: hasLocal,
+        importedHasCase: true,
+        finalHasCase: true,
+        tagsAdded: importedCase.tags.filter((t) => !hasLocal ? true : !(hasCase(recordId) && useCaseStore.getState().getCase(recordId)?.tags.includes(t))),
       });
     },
-    [openConflictDialog]
+    [openCaseConflictDialog]
   );
 
   const finalizeImport = React.useCallback(
@@ -170,6 +182,7 @@ export function ImportButton({
 
       if (overwriteMode) {
         clearAnnotationsForRecord(finalRecord.id);
+        clearCasesForRecord(finalRecord.id);
       }
 
       upsertHistory(finalRecord, overwriteMode ? 'overwrite' : 'insert');
@@ -198,8 +211,11 @@ export function ImportButton({
       onImported?.(finalRecord);
       onAnyChange?.();
 
+      setPendingFinalRecord(finalRecord);
+      setPendingFileName(fileName);
+      setPendingAfterAnnotations(false);
+
       if (rawPkg && rawPkg.annotations && rawPkg.annotations.length > 0) {
-        setPendingFinalRecord(finalRecord);
         const annConflicts = detectAnnotationConflicts(
           finalRecord.id,
           rawPkg.annotations,
@@ -209,7 +225,6 @@ export function ImportButton({
           setPendingAnnotations(rawPkg.annotations);
           setPendingAnnotationConflicts(annConflicts);
           setAnnotationConflictOpen(true);
-          setPendingFileName(fileName);
         } else {
           const localCountBefore = loadAnnotations(finalRecord.id).length;
           const merged = mergeAnnotations(
@@ -227,6 +242,18 @@ export function ImportButton({
           if (merged.length > 0) {
             showToast({ kind: 'success', title: `${merged.length} 条批注已导入` });
           }
+          if (rawPkg.caseInfo) {
+            handleCaseDirect(finalRecord.id, rawPkg.caseInfo, fileName);
+          } else {
+            appendCaseImportLog({
+              fileName,
+              recordId: finalRecord.id,
+              success: true,
+              hasLocalCase: hasCase(finalRecord.id),
+              importedHasCase: false,
+              finalHasCase: hasCase(finalRecord.id),
+            });
+          }
         }
       } else {
         appendAnnotationImportLog({
@@ -237,11 +264,23 @@ export function ImportButton({
           importedCount: 0,
           finalCount: loadAnnotations(finalRecord.id).length,
         });
+        if (rawPkg?.caseInfo) {
+          handleCaseDirect(finalRecord.id, rawPkg.caseInfo, fileName);
+        } else {
+          appendCaseImportLog({
+            fileName,
+            recordId: finalRecord.id,
+            success: true,
+            hasLocalCase: hasCase(finalRecord.id),
+            importedHasCase: false,
+            finalHasCase: hasCase(finalRecord.id),
+          });
+        }
       }
 
       setBusy(false);
     },
-    [onImported, onAnyChange, showToast]
+    [onImported, onAnyChange, showToast, handleCaseDirect]
   );
 
   const handleFile = React.useCallback(
@@ -399,9 +438,100 @@ export function ImportButton({
     }
 
     onAnyChange?.();
+
+    const pkg = pendingResult?.replayPackage;
+    if (pkg?.caseInfo) {
+      handleCaseDirect(pendingFinalRecord.id, pkg.caseInfo, pendingFileName);
+    } else {
+      appendCaseImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalCase: hasCase(pendingFinalRecord.id),
+        importedHasCase: false,
+        finalHasCase: hasCase(pendingFinalRecord.id),
+      });
+    }
+
     setAnnotationConflictOpen(false);
     setPendingAnnotations(null);
     setPendingAnnotationConflicts([]);
+    setPendingFinalRecord(null);
+    setPendingFileName('');
+  };
+
+  const handleCaseResolve = (resolution: CaseConflictResolution) => {
+    if (!pendingFinalRecord || !pendingCase) {
+      setCaseConflictOpen(false);
+      return;
+    }
+    const hasLocal = hasCase(pendingFinalRecord.id);
+    const conflictTypes = pendingCaseConflicts.map((c) => c.type);
+
+    if (resolution === 'KEEP_LOCAL') {
+      appendCaseImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalCase: hasLocal,
+        importedHasCase: true,
+        finalHasCase: hasLocal,
+        resolution: 'KEEP_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'warn', title: '保留本地案例', detail: '本地案例未被修改' });
+    } else if (resolution === 'OVERWRITE_LOCAL') {
+      replaceCase(pendingFinalRecord.id, pendingCase);
+      appendCaseImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalCase: hasLocal,
+        importedHasCase: true,
+        finalHasCase: true,
+        resolution: 'OVERWRITE_LOCAL',
+        conflicts: conflictTypes,
+      });
+      showToast({ kind: 'success', title: '案例已覆盖', detail: '使用导入案例替换了本地案例' });
+    } else if (resolution === 'MERGE') {
+      const merged = mergeCase(pendingFinalRecord.id, pendingCase);
+      const tagsAdded = pendingCase.tags.filter(
+        (t) => !useCaseStore.getState().getCase(pendingFinalRecord.id)?.tags.includes(t)
+      );
+      appendCaseImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: true,
+        hasLocalCase: hasLocal,
+        importedHasCase: true,
+        finalHasCase: true,
+        resolution: 'MERGE',
+        conflicts: conflictTypes,
+        tagsAdded,
+      });
+      showToast({
+        kind: 'success',
+        title: '案例已合并',
+        detail: tagsAdded.length > 0 ? `新增 ${tagsAdded.length} 个标签：${tagsAdded.join('、')}` : '标签已合并',
+      });
+    } else {
+      appendCaseImportLog({
+        fileName: pendingFileName,
+        recordId: pendingFinalRecord.id,
+        success: false,
+        hasLocalCase: hasLocal,
+        importedHasCase: true,
+        finalHasCase: hasLocal,
+        resolution: 'SKIP',
+        conflicts: conflictTypes,
+        errors: ['用户选择跳过案例导入'],
+      });
+    }
+
+    onAnyChange?.();
+    setCaseConflictOpen(false);
+    setPendingCase(null);
+    setPendingCaseConflicts([]);
     setPendingFinalRecord(null);
     setPendingFileName('');
   };
@@ -498,6 +628,32 @@ export function ImportButton({
           setPendingFileName('');
         }}
         onResolve={handleAnnotationResolve}
+      />
+
+      <CaseConflictDialog
+        open={caseConflictOpen}
+        conflicts={pendingCaseConflicts}
+        localHasCase={pendingFinalRecord ? hasCase(pendingFinalRecord.id) : false}
+        importedHasCase={!!pendingCase}
+        onClose={() => {
+          if (pendingFinalRecord && pendingCase) {
+            appendCaseImportLog({
+              fileName: pendingFileName,
+              recordId: pendingFinalRecord.id,
+              success: false,
+              hasLocalCase: hasCase(pendingFinalRecord.id),
+              importedHasCase: true,
+              finalHasCase: hasCase(pendingFinalRecord.id),
+              errors: ['用户取消了案例冲突处理'],
+            });
+          }
+          setCaseConflictOpen(false);
+          setPendingCase(null);
+          setPendingCaseConflicts([]);
+          setPendingFinalRecord(null);
+          setPendingFileName('');
+        }}
+        onResolve={handleCaseResolve}
       />
     </>
   );
