@@ -1,0 +1,145 @@
+{
+  "id": "basic-emergency",
+  "name": "基础急诊分诊",
+  "version": "1.0.0",
+  "description": "模拟综合急诊日常分诊场景，涵盖常见急症类型，适合新手练习基础分诊逻辑。",
+  "difficulty": "EASY",
+  "timeLimitSeconds": 480,
+  "patients": [
+    {
+      "id": "p001",
+      "sequenceNo": 1,
+      "name": "患者A",
+      "age": "56岁",
+      "gender": "男",
+      "chiefComplaint": "突发胸痛2小时，向左肩放射，伴大汗",
+      "history": "高血压病史10年，冠心病家族史",
+      "allergies": "青霉素过敏",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 118, "bp": "158/96", "spo2": 91, "gcs": 15, "respRate": 26, "temperature": 36.8 },
+      "tags": ["胸痛", "高血压"],
+      "correctChannel": "RED",
+      "reasoning": "典型急性冠脉综合征表现，胸痛伴放射及血流动力学异常，SpO2<94%，需紧急处理。",
+      "requiredResources": [
+        { "resourceId": "ecg", "count": 1, "reason": "立即心电图检查" },
+        { "resourceId": "oxygen", "count": 1, "reason": "吸氧改善氧合" },
+        { "resourceId": "aspirin", "count": 1, "reason": "抗血小板" }
+      ]
+    },
+    {
+      "id": "p002",
+      "sequenceNo": 2,
+      "name": "患者B",
+      "age": "32岁",
+      "gender": "女",
+      "chiefComplaint": "右下腹疼痛8小时，伴恶心呕吐，发热",
+      "history": "既往健康",
+      "allergies": "无",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 105, "bp": "122/80", "spo2": 98, "gcs": 15, "respRate": 20, "temperature": 38.6 },
+      "tags": ["腹痛", "发热"],
+      "correctChannel": "YELLOW",
+      "reasoning": "疑似阑尾炎，发热伴心动过速，但生命体征相对稳定，需尽快评估但非立即危及生命。",
+      "requiredResources": [
+        { "resourceId": "iv", "count": 1, "reason": "建立静脉通路" },
+        { "resourceId": "analgesia", "count": 1, "reason": "镇痛" }
+      ]
+    },
+    {
+      "id": "p003",
+      "sequenceNo": 3,
+      "name": "患者C",
+      "age": "23岁",
+      "gender": "男",
+      "chiefComplaint": "运动时扭伤左踝，肿痛，行走困难",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "运动扭伤",
+      "vitalSigns": { "hr": 82, "bp": "120/78", "spo2": 99, "gcs": 15, "respRate": 16, "temperature": 36.5 },
+      "tags": ["外伤", "软组织损伤"],
+      "correctChannel": "GREEN",
+      "reasoning": "单纯踝关节扭伤，生命体征完全正常，无危及生命表现，可延迟处理。",
+      "requiredResources": [
+        { "resourceId": "splint", "count": 1, "reason": "外固定支具" }
+      ]
+    },
+    {
+      "id": "p004",
+      "sequenceNo": 4,
+      "name": "患者D",
+      "age": "78岁",
+      "gender": "女",
+      "chiefComplaint": "家属发现呼之不应，呼吸微弱，面色紫绀",
+      "history": "晚期肺癌，多发骨转移",
+      "allergies": "磺胺类",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 42, "bp": "60/30", "spo2": 58, "gcs": 3, "respRate": 6, "temperature": 35.2 },
+      "tags": ["昏迷", "休克", "晚期肿瘤"],
+      "correctChannel": "BLACK",
+      "reasoning": "GCS 3分，深度昏迷+严重休克+极重度低氧血症+呼吸抑制，结合晚期恶性肿瘤背景，预后极差。",
+      "requiredResources": []
+    },
+    {
+      "id": "p005",
+      "sequenceNo": 5,
+      "name": "患者E",
+      "age": "45岁",
+      "gender": "男",
+      "chiefComplaint": "车祸致头外伤，意识模糊，外耳道流血",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "车祸（机动车撞击行人）",
+      "vitalSigns": { "hr": 130, "bp": "170/110", "spo2": 88, "gcs": 11, "respRate": 32, "temperature": 36.7 },
+      "tags": ["颅脑外伤", "Cushing反应"],
+      "correctChannel": "RED",
+      "reasoning": "严重颅脑外伤，GCS<13伴颅内压升高表现（高血压+心动过缓趋势）、外耳道流血提示颅底骨折，需紧急神经外科评估。",
+      "requiredResources": [
+        { "resourceId": "cervical-collar", "count": 1, "reason": "颈椎固定" },
+        { "resourceId": "oxygen", "count": 1, "reason": "维持氧合" },
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路" },
+        { "resourceId": "ct", "count": 1, "reason": "紧急头颅CT" }
+      ]
+    },
+    {
+      "id": "p006",
+      "sequenceNo": 6,
+      "name": "患者F",
+      "age": "6岁",
+      "gender": "男",
+      "chiefComplaint": "发热1天，轻咳，精神好，可玩耍",
+      "history": "早产史(35周)，现生长发育正常",
+      "allergies": "无",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 110, "bp": "98/60", "spo2": 97, "gcs": 15, "respRate": 24, "temperature": 38.2 },
+      "tags": ["发热", "上感"],
+      "correctChannel": "GREEN",
+      "reasoning": "普通上呼吸道感染表现，精神状态好，无呼吸窘迫，各项指标符合轻症。",
+      "requiredResources": [
+        { "resourceId": "antipyretic", "count": 1, "reason": "退热" }
+      ]
+    }
+  ],
+  "resourceSlots": [
+    { "id": "ecg", "name": "心电图机", "icon": "Activity", "initialCount": 2, "description": "12导联心电图", "consumable": false },
+    { "id": "oxygen", "name": "吸氧装置", "icon": "Wind", "initialCount": 5, "description": "鼻导管/面罩吸氧", "consumable": false },
+    { "id": "aspirin", "name": "阿司匹林", "icon": "Pill", "initialCount": 10, "description": "嚼服300mg", "consumable": true },
+    { "id": "iv", "name": "静脉穿刺包", "icon": "Syringe", "initialCount": 8, "description": "留置针+敷贴", "consumable": true },
+    { "id": "analgesia", "name": "镇痛药物", "icon": "Tablets", "initialCount": 6, "description": "非阿片类镇痛药", "consumable": true },
+    { "id": "splint", "name": "外固定支具", "icon": "Bandage", "initialCount": 4, "description": "踝关节支具", "consumable": false },
+    { "id": "cervical-collar", "name": "颈托", "icon": "Shield", "initialCount": 3, "description": "硬质颈托", "consumable": false },
+    { "id": "ct", "name": "急诊CT", "icon": "Scan", "initialCount": 1, "description": "头颅CT绿色通道", "consumable": false },
+    { "id": "antipyretic", "name": "退热药物", "icon": "Thermometer", "initialCount": 8, "description": "对乙酰氨基酚混悬液", "consumable": true },
+    { "id": "defibrillator", "name": "除颤仪", "icon": "Zap", "initialCount": 1, "description": "双相波除颤仪", "consumable": false }
+  ],
+  "scoringRules": {
+    "correctScore": 100,
+    "channelWrongPenalty": 60,
+    "severityMismatchPenalty": 30,
+    "resourceMissPenalty": 10,
+    "resourceOverusePenalty": 8,
+    "timeoutPenaltyPerSec": 0.5,
+    "pausePenalty": 0,
+    "perfectChannelBonus": 50,
+    "resourceEfficiencyBonus": 30
+  }
+}

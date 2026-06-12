@@ -1,0 +1,270 @@
+{
+  "id": "mass-casualty",
+  "name": "批量伤亡事件",
+  "version": "1.1.0",
+  "description": "模拟地铁火灾批量伤亡事件，共12名患者，资源极度紧张，考验分诊优先级判断能力。",
+  "difficulty": "HARD",
+  "timeLimitSeconds": 600,
+  "patients": [
+    {
+      "id": "mc001",
+      "sequenceNo": 1,
+      "name": "伤员1",
+      "age": "42岁",
+      "gender": "男",
+      "chiefComplaint": "爆炸伤后胸痛、呼吸困难、咯血",
+      "history": "健康",
+      "allergies": "无",
+      "injuryMechanism": "地铁爆炸冲击伤",
+      "vitalSigns": { "hr": 140, "bp": "80/45", "spo2": 72, "gcs": 13, "respRate": 40, "temperature": 36.2 },
+      "tags": ["冲击伤", "血气胸"],
+      "correctChannel": "RED",
+      "reasoning": "创伤失血性休克+严重低氧血症+呼吸急促，高度怀疑血气胸，需立即胸腔闭式引流。",
+      "requiredResources": [
+        { "resourceId": "chest-tube", "count": 1, "reason": "胸腔闭式引流" },
+        { "resourceId": "oxygen-hi", "count": 1, "reason": "高流量吸氧" },
+        { "resourceId": "iv-fast", "count": 2, "reason": "快速补液通道×2" },
+        { "resourceId": "blood", "count": 2, "reason": "紧急备血" }
+      ]
+    },
+    {
+      "id": "mc002",
+      "sequenceNo": 2,
+      "name": "伤员2",
+      "age": "28岁",
+      "gender": "女",
+      "chiefComplaint": "全身多处火焰烧伤，创面起水泡，疼痛剧烈",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "车厢内火焰燃烧",
+      "vitalSigns": { "hr": 120, "bp": "108/68", "spo2": 93, "gcs": 15, "respRate": 22, "temperature": 37.0 },
+      "tags": ["烧伤(约30%TBSA)", "无吸入伤征象"],
+      "correctChannel": "YELLOW",
+      "reasoning": "中度烧伤，生命体征稳定但需尽快补液与创面处理，暂不危及生命。",
+      "requiredResources": [
+        { "resourceId": "iv", "count": 1, "reason": "补液通路" },
+        { "resourceId": "dressing", "count": 3, "reason": "烧伤敷料" },
+        { "resourceId": "analgesia", "count": 2, "reason": "充分镇痛" }
+      ]
+    },
+    {
+      "id": "mc003",
+      "sequenceNo": 3,
+      "name": "伤员3",
+      "age": "71岁",
+      "gender": "男",
+      "chiefComplaint": "被发现时已无脉搏无呼吸，心肺复苏15分钟无反应",
+      "history": "冠心病史，心梗史2次",
+      "allergies": "无",
+      "injuryMechanism": "火灾中烟熏+心脏骤停",
+      "vitalSigns": { "hr": 0, "bp": "0/0", "spo2": 0, "gcs": 3, "respRate": 0, "temperature": 34.0 },
+      "tags": ["心跳骤停", "心肺复苏失败"],
+      "correctChannel": "BLACK",
+      "reasoning": "心脏骤停+标准CPR 15分钟无效，结合既往严重冠心病，在批量伤亡资源受限条件下属无望。",
+      "requiredResources": []
+    },
+    {
+      "id": "mc004",
+      "sequenceNo": 4,
+      "name": "伤员4",
+      "age": "35岁",
+      "gender": "女",
+      "chiefComplaint": "奔跑时扭伤右膝，皮肤擦伤少量渗血，可自行行走",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "逃生时摔倒",
+      "vitalSigns": { "hr": 92, "bp": "118/76", "spo2": 99, "gcs": 15, "respRate": 18, "temperature": 36.6 },
+      "tags": ["擦伤", "扭伤"],
+      "correctChannel": "GREEN",
+      "reasoning": "轻微外伤，生命体征完全正常，能行走，可等待处理。",
+      "requiredResources": [
+        { "resourceId": "dressing", "count": 1, "reason": "擦伤包扎" }
+      ]
+    },
+    {
+      "id": "mc005",
+      "sequenceNo": 5,
+      "name": "伤员5",
+      "age": "50岁",
+      "gender": "男",
+      "chiefComplaint": "左大腿畸形、剧痛，无法活动",
+      "history": "高血压",
+      "allergies": "ACEI类药物",
+      "injuryMechanism": "车厢倒塌挤压",
+      "vitalSigns": { "hr": 115, "bp": "100/60", "spo2": 96, "gcs": 15, "respRate": 24, "temperature": 36.4 },
+      "tags": ["股骨骨折", "挤压综合征待排"],
+      "correctChannel": "YELLOW",
+      "reasoning": "股骨骨折伴轻度休克前期表现，需尽快处理以防进展，但暂无立即生命危险。",
+      "requiredResources": [
+        { "resourceId": "splint-traction", "count": 1, "reason": "股骨牵引固定" },
+        { "resourceId": "iv", "count": 1, "reason": "补液" },
+        { "resourceId": "analgesia", "count": 2, "reason": "镇痛" }
+      ]
+    },
+    {
+      "id": "mc006",
+      "sequenceNo": 6,
+      "name": "伤员6",
+      "age": "9岁",
+      "gender": "女",
+      "chiefComplaint": "咳嗽、声音嘶哑、鼻毛烧焦、轻度呼吸困难",
+      "history": "哮喘史",
+      "allergies": "尘螨",
+      "injuryMechanism": "火灾烟雾吸入",
+      "vitalSigns": { "hr": 125, "bp": "110/70", "spo2": 90, "gcs": 15, "respRate": 30, "temperature": 37.2 },
+      "tags": ["吸入性损伤", "气道风险"],
+      "correctChannel": "RED",
+      "reasoning": "儿童+烟雾吸入+鼻毛烧焦+SpO2<94%，气道水肿进展风险极高，需紧急气道管理。",
+      "requiredResources": [
+        { "resourceId": "airway-kit", "count": 1, "reason": "困难气道套件备插管" },
+        { "resourceId": "oxygen-hi", "count": 1, "reason": "湿化高流量氧" },
+        { "resourceId": "nebulizer", "count": 1, "reason": "雾化吸入支气管扩张剂" }
+      ]
+    },
+    {
+      "id": "mc007",
+      "sequenceNo": 7,
+      "name": "伤员7",
+      "age": "62岁",
+      "gender": "女",
+      "chiefComplaint": "胸骨后剧烈痛，心电图示ST段抬高0.3mV",
+      "history": "糖尿病、高脂血症",
+      "allergies": "造影剂过敏",
+      "injuryMechanism": "事件诱发急性发作",
+      "vitalSigns": { "hr": 110, "bp": "95/60", "spo2": 90, "gcs": 14, "respRate": 28, "temperature": 36.7 },
+      "tags": ["STEMI", "心源性休克前期"],
+      "correctChannel": "RED",
+      "reasoning": "急性ST段抬高心梗+血压偏低+低氧，需紧急再灌注治疗。",
+      "requiredResources": [
+        { "resourceId": "ecg", "count": 1, "reason": "12导联ECG" },
+        { "resourceId": "aspirin", "count": 1, "reason": "阿司匹林300mg" },
+        { "resourceId": "oxygen", "count": 1, "reason": "吸氧" },
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路" }
+      ]
+    },
+    {
+      "id": "mc008",
+      "sequenceNo": 8,
+      "name": "伤员8",
+      "age": "22岁",
+      "gender": "男",
+      "chiefComplaint": "受惊吓后心慌手抖，无外伤",
+      "history": "焦虑障碍史",
+      "allergies": "无",
+      "injuryMechanism": "无外伤",
+      "vitalSigns": { "hr": 100, "bp": "130/85", "spo2": 99, "gcs": 15, "respRate": 20, "temperature": 36.8 },
+      "tags": ["癔症/惊恐发作"],
+      "correctChannel": "GREEN",
+      "reasoning": "完全正常生命体征，仅心理反应，无需紧急医疗干预。",
+      "requiredResources": []
+    },
+    {
+      "id": "mc009",
+      "sequenceNo": 9,
+      "name": "伤员9",
+      "age": "55岁",
+      "gender": "女",
+      "chiefComplaint": "剧烈腹痛伴腰背痛，血压进行性下降",
+      "history": "腹主动脉瘤病史（未手术）",
+      "allergies": "无",
+      "injuryMechanism": "事件诱发破裂",
+      "vitalSigns": { "hr": 135, "bp": "70/40", "spo2": 88, "gcs": 12, "respRate": 32, "temperature": 35.8 },
+      "tags": ["AAA破裂", "失血性休克"],
+      "correctChannel": "RED",
+      "reasoning": "疑似腹主动脉瘤破裂+重度休克+意识改变，需紧急外科干预。",
+      "requiredResources": [
+        { "resourceId": "iv-fast", "count": 2, "reason": "两路大口径快速补液" },
+        { "resourceId": "blood", "count": 4, "reason": "紧急大量输血" },
+        { "resourceId": "oxygen-hi", "count": 1, "reason": "高流量氧" }
+      ]
+    },
+    {
+      "id": "mc010",
+      "sequenceNo": 10,
+      "name": "伤员10",
+      "age": "30岁",
+      "gender": "男",
+      "chiefComplaint": "右前臂切割伤，出血约100ml已止血",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "破碎玻璃划伤",
+      "vitalSigns": { "hr": 85, "bp": "122/80", "spo2": 99, "gcs": 15, "respRate": 16, "temperature": 36.5 },
+      "tags": ["切割伤", "已止血"],
+      "correctChannel": "GREEN",
+      "reasoning": "小伤口出血已止，生命体征稳定，单纯清创缝合可延迟。",
+      "requiredResources": [
+        { "resourceId": "dressing", "count": 1, "reason": "伤口包扎" }
+      ]
+    },
+    {
+      "id": "mc011",
+      "sequenceNo": 11,
+      "name": "伤员11",
+      "age": "47岁",
+      "gender": "男",
+      "chiefComplaint": "高处坠落（约3米）后腰背部剧痛，双下肢感觉消失",
+      "history": "无",
+      "allergies": "无",
+      "injuryMechanism": "从站台跳下摔伤",
+      "vitalSigns": { "hr": 95, "bp": "110/70", "spo2": 97, "gcs": 15, "respRate": 20, "temperature": 36.3 },
+      "tags": ["脊柱损伤", "截瘫"],
+      "correctChannel": "YELLOW",
+      "reasoning": "脊柱损伤伴神经功能缺失，需尽快MRI评估，但暂无立即生命危险。",
+      "requiredResources": [
+        { "resourceId": "spine-board", "count": 1, "reason": "脊柱板固定搬运" },
+        { "resourceId": "cervical-collar", "count": 1, "reason": "颈托" },
+        { "resourceId": "analgesia", "count": 1, "reason": "镇痛" }
+      ]
+    },
+    {
+      "id": "mc012",
+      "sequenceNo": 12,
+      "name": "伤员12",
+      "age": "86岁",
+      "gender": "女",
+      "chiefComplaint": "老年痴呆，摔伤头部，头皮血肿，嗜睡但可唤醒",
+      "history": "阿尔茨海默病5年，房颤服华法林",
+      "allergies": "华法林",
+      "injuryMechanism": "混乱中摔倒",
+      "vitalSigns": { "hr": 78, "bp": "145/90", "spo2": 94, "gcs": 13, "respRate": 18, "temperature": 36.5 },
+      "tags": ["TBI待排", "抗凝治疗中"],
+      "correctChannel": "YELLOW",
+      "reasoning": "头部外伤+华法林抗凝+GCS<15，需尽快CT排除颅内出血，但当前生命体征稳定。",
+      "requiredResources": [
+        { "resourceId": "ct", "count": 1, "reason": "头颅CT" },
+        { "resourceId": "cervical-collar", "count": 1, "reason": "颈托保护" },
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路" }
+      ]
+    }
+  ],
+  "resourceSlots": [
+    { "id": "ecg", "name": "心电图机", "icon": "Activity", "initialCount": 1, "description": "12导联ECG", "consumable": false },
+    { "id": "oxygen", "name": "普通吸氧", "icon": "Wind", "initialCount": 3, "description": "鼻导管2-5L/min", "consumable": false },
+    { "id": "oxygen-hi", "name": "高流量氧装置", "icon": "Wind", "initialCount": 2, "description": "高流量加温湿化氧疗", "consumable": false },
+    { "id": "aspirin", "name": "阿司匹林", "icon": "Pill", "initialCount": 8, "description": "300mg嚼服", "consumable": true },
+    { "id": "iv", "name": "普通静脉通路", "icon": "Syringe", "initialCount": 10, "description": "18G留置针", "consumable": true },
+    { "id": "iv-fast", "name": "快速补液通路", "icon": "Syringe", "initialCount": 4, "description": "14G大口径+加压输液器", "consumable": true },
+    { "id": "blood", "name": "红细胞悬液(U)", "icon": "Droplet", "initialCount": 6, "description": "未交叉配型O型Rh-", "consumable": true },
+    { "id": "analgesia", "name": "镇痛药物(剂)", "icon": "Tablets", "initialCount": 10, "description": "非阿片/阿片类按需", "consumable": true },
+    { "id": "dressing", "name": "医用敷料(包)", "icon": "Bandage", "initialCount": 8, "description": "灭菌纱布+自粘绷带", "consumable": true },
+    { "id": "cervical-collar", "name": "硬质颈托", "icon": "Shield", "initialCount": 3, "description": "可调节颈托", "consumable": false },
+    { "id": "splint-traction", "name": "股骨牵引器", "icon": "Bone", "initialCount": 1, "description": "成人下肢牵引固定", "consumable": false },
+    { "id": "spine-board", "name": "脊柱固定板", "icon": "LayoutGrid", "initialCount": 2, "description": "长脊柱板+约束带", "consumable": false },
+    { "id": "chest-tube", "name": "胸腔闭式引流", "icon": "ArrowRightLeft", "initialCount": 2, "description": "28F胸引管套装", "consumable": true },
+    { "id": "airway-kit", "name": "困难气道套件", "icon": "Wind", "initialCount": 1, "description": "可视喉镜+各种型号管", "consumable": true },
+    { "id": "nebulizer", "name": "雾化器", "icon": "CloudFog", "initialCount": 2, "description": "气动雾化吸入器", "consumable": false },
+    { "id": "ct", "name": "急诊CT", "icon": "Scan", "initialCount": 2, "description": "CT检查绿色通道名额", "consumable": false },
+    { "id": "defibrillator", "name": "除颤监护仪", "icon": "Zap", "initialCount": 2, "description": "双相波除颤+起搏", "consumable": false }
+  ],
+  "scoringRules": {
+    "correctScore": 100,
+    "channelWrongPenalty": 70,
+    "severityMismatchPenalty": 35,
+    "resourceMissPenalty": 12,
+    "resourceOverusePenalty": 10,
+    "timeoutPenaltyPerSec": 0.8,
+    "pausePenalty": 5,
+    "perfectChannelBonus": 100,
+    "resourceEfficiencyBonus": 60
+  }
+}

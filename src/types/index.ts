@@ -1,0 +1,259 @@
+export type Channel = 'RED' | 'YELLOW' | 'GREEN' | 'BLACK';
+
+export const CHANNEL_ORDER: Channel[] = ['RED', 'YELLOW', 'GREEN', 'BLACK'];
+
+export const CHANNEL_LABEL: Record<Channel, string> = {
+  RED: '红色通道',
+  YELLOW: '黄色通道',
+  GREEN: '绿色通道',
+  BLACK: '黑色通道',
+};
+
+export const CHANNEL_SHORT: Record<Channel, string> = {
+  RED: '紧急',
+  YELLOW: '危重',
+  GREEN: '轻症',
+  BLACK: '无望',
+};
+
+export const CHANNEL_COLOR: Record<Channel, { bg: string; border: string; text: string; glow: string }> = {
+  RED: { bg: 'bg-red-50', border: 'border-red-500', text: 'text-red-700', glow: 'shadow-red-200' },
+  YELLOW: { bg: 'bg-amber-50', border: 'border-amber-500', text: 'text-amber-700', glow: 'shadow-amber-200' },
+  GREEN: { bg: 'bg-emerald-50', border: 'border-emerald-500', text: 'text-emerald-700', glow: 'shadow-emerald-200' },
+  BLACK: { bg: 'bg-slate-100', border: 'border-slate-700', text: 'text-slate-800', glow: 'shadow-slate-300' },
+};
+
+export type GameStatus = 'IDLE' | 'RUNNING' | 'PAUSED' | 'ENDED' | 'ABANDONED';
+
+export type ActionType =
+  | 'ALLOCATE'
+  | 'DEALLOCATE'
+  | 'REALLOCATE'
+  | 'RESOURCE_USE'
+  | 'RESOURCE_RETURN'
+  | 'PAUSE'
+  | 'RESUME'
+  | 'SUBMIT'
+  | 'SELECT_PATIENT';
+
+export type Difficulty = 'EASY' | 'MEDIUM' | 'HARD';
+
+export const DIFFICULTY_LABEL: Record<Difficulty, string> = {
+  EASY: '简单',
+  MEDIUM: '中等',
+  HARD: '困难',
+};
+
+export const DIFFICULTY_LABEL_COLOR: Record<Difficulty, string> = {
+  EASY: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  MEDIUM: 'bg-amber-50 text-amber-700 border-amber-200',
+  HARD: 'bg-red-50 text-red-700 border-red-200',
+};
+
+export interface VitalSigns {
+  hr: number;
+  bp: string;
+  spo2: number;
+  gcs: number;
+  respRate: number;
+  temperature: number;
+}
+
+export interface ResourceRequirement {
+  resourceId: string;
+  count: number;
+  reason?: string;
+}
+
+export interface Patient {
+  id: string;
+  sequenceNo: number;
+  name: string;
+  age: string;
+  gender: string;
+  chiefComplaint: string;
+  history: string;
+  allergies: string;
+  injuryMechanism: string;
+  vitalSigns: VitalSigns;
+  tags: string[];
+  correctChannel: Channel;
+  reasoning: string;
+  requiredResources: ResourceRequirement[];
+}
+
+export interface ResourceSlot {
+  id: string;
+  name: string;
+  icon: string;
+  initialCount: number;
+  description: string;
+  consumable: boolean;
+}
+
+export interface ScoringRules {
+  correctScore: number;
+  channelWrongPenalty: number;
+  severityMismatchPenalty: number;
+  resourceMissPenalty: number;
+  resourceOverusePenalty: number;
+  timeoutPenaltyPerSec: number;
+  pausePenalty: number;
+  perfectChannelBonus: number;
+  resourceEfficiencyBonus: number;
+}
+
+export interface Level {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  difficulty: Difficulty;
+  timeLimitSeconds: number;
+  patients: Patient[];
+  resourceSlots: ResourceSlot[];
+  scoringRules: ScoringRules;
+}
+
+export interface ActionLog {
+  timestamp: number;
+  type: ActionType;
+  patientId?: string;
+  fromChannel?: Channel | null;
+  toChannel?: Channel | null;
+  resourceId?: string;
+  note?: string;
+}
+
+export interface ErrorRecord {
+  code: string;
+  message: string;
+  suggestion: string;
+  patientId?: string;
+  channel?: Channel;
+  resourceId?: string;
+  timestamp: number;
+}
+
+export interface GameSession {
+  id: string;
+  levelId: string;
+  levelVersion: string;
+  status: GameStatus;
+  startTime: number;
+  pausedAt: number | null;
+  totalPausedMs: number;
+  elapsedSeconds: number;
+  remainingSeconds: number;
+  selectedPatientId: string | null;
+  assignments: Record<string, Channel | null>;
+  resourceUsage: Record<string, number>;
+  operationLog: ActionLog[];
+  errors: ErrorRecord[];
+  savedAt?: number;
+}
+
+export interface ScoringDetail {
+  patientId: string;
+  patientName: string;
+  correctChannel: Channel;
+  assignedChannel: Channel | null;
+  score: number;
+  baseScore: number;
+  penalties: { type: string; amount: number; reason: string }[];
+  bonuses: { type: string; amount: number; reason: string }[];
+}
+
+export interface ScoreResult {
+  total: number;
+  maxScore: number;
+  accuracy: number;
+  details: ScoringDetail[];
+  resourceScore: number;
+  timeScore: number;
+  finalPenalty: number;
+  finalBonus: number;
+  recalcProof: { ruleKey: string; input: unknown; output: number }[];
+}
+
+export interface GameRecord {
+  id: string;
+  levelId: string;
+  levelName: string;
+  levelVersion: string;
+  difficulty: Difficulty;
+  totalScore: number;
+  maxScore: number;
+  accuracy: number;
+  usedSeconds: number;
+  completed: boolean;
+  createdAt: number;
+  sessionSnapshot: GameSession;
+  scoreSnapshot: ScoreResult;
+}
+
+export interface InProgressSave {
+  version: number;
+  savedAt: number;
+  session: GameSession;
+  levelId: string;
+}
+
+export const STORAGE_KEYS = {
+  IN_PROGRESS: 'triage:in-progress',
+  HISTORY: 'triage:history',
+  STORAGE_VERSION: 1,
+} as const;
+
+export const MAX_HISTORY = 200;
+
+export const ERROR_CODES = {
+  E_PAUSED_LOCKED: 'E_PAUSED_LOCKED',
+  E_GAME_ENDED: 'E_GAME_ENDED',
+  E_RESOURCE_DEPLETED: 'E_RESOURCE_DEPLETED',
+  E_ALREADY_SUBMITTED: 'E_ALREADY_SUBMITTED',
+  E_NOT_ALL_ASSIGNED: 'E_NOT_ALL_ASSIGNED',
+  E_INVALID_TARGET: 'E_INVALID_TARGET',
+  E_RESOURCE_NOT_USED: 'E_RESOURCE_NOT_USED',
+  E_INVALID_CONFIG: 'E_INVALID_CONFIG',
+  E_CONFIG_NOT_FOUND: 'E_CONFIG_NOT_FOUND',
+} as const;
+
+export const ERROR_MESSAGES: Record<string, { message: string; suggestion: string }> = {
+  [ERROR_CODES.E_PAUSED_LOCKED]: {
+    message: '游戏已暂停，无法进行操作',
+    suggestion: '请点击「继续」按钮恢复游戏后再操作',
+  },
+  [ERROR_CODES.E_GAME_ENDED]: {
+    message: '本局已结束，无法修改答案',
+    suggestion: '可以重玩本关开始新的训练',
+  },
+  [ERROR_CODES.E_RESOURCE_DEPLETED]: {
+    message: '资源不足，无法消耗',
+    suggestion: '请选择其他资源或归还已使用的资源',
+  },
+  [ERROR_CODES.E_ALREADY_SUBMITTED]: {
+    message: '已提交过答案，请勿重复提交',
+    suggestion: '本关已完成，请查看结果页',
+  },
+  [ERROR_CODES.E_NOT_ALL_ASSIGNED]: {
+    message: '仍有患者未完成分诊',
+    suggestion: '请将所有患者分配到通道后再提交',
+  },
+  [ERROR_CODES.E_INVALID_TARGET]: {
+    message: '目标患者或通道无效',
+    suggestion: '请检查患者和通道选择是否正确',
+  },
+  [ERROR_CODES.E_RESOURCE_NOT_USED]: {
+    message: '该资源未被消耗，无法归还',
+    suggestion: '请检查资源消耗记录',
+  },
+  [ERROR_CODES.E_INVALID_CONFIG]: {
+    message: '关卡配置非法',
+    suggestion: '请联系管理员修复关卡配置文件',
+  },
+  [ERROR_CODES.E_CONFIG_NOT_FOUND]: {
+    message: '关卡配置不存在',
+    suggestion: '请返回首页选择其他关卡',
+  },
+};

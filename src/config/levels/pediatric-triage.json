@@ -1,0 +1,196 @@
+{
+  "id": "pediatric-triage",
+  "name": "儿科急诊分诊",
+  "version": "1.0.2",
+  "description": "专门针对儿科患者的分诊场景，涉及新生儿、婴幼儿及儿童常见急症8例。",
+  "difficulty": "MEDIUM",
+  "timeLimitSeconds": 540,
+  "patients": [
+    {
+      "id": "pd001",
+      "sequenceNo": 1,
+      "name": "患儿1",
+      "age": "28天",
+      "gender": "男",
+      "chiefComplaint": "发热38.9℃，拒奶，反应差",
+      "history": "足月顺产，无窒息史",
+      "allergies": "无",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 180, "bp": "75/40", "spo2": 92, "gcs": 11, "respRate": 60, "temperature": 38.9 },
+      "tags": ["新生儿发热", "疑似败血症"],
+      "correctChannel": "RED",
+      "reasoning": "28天新生儿发热≥38℃+喂养困难+意识改变，需紧急败血症筛查+抗生素+住院。",
+      "requiredResources": [
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路+采血培养" },
+        { "resourceId": "lp-kit", "count": 1, "reason": "腰穿套装" },
+        { "resourceId": "abx", "count": 1, "reason": "经验性抗生素" },
+        { "resourceId": "oxygen", "count": 1, "reason": "低流量氧" }
+      ]
+    },
+    {
+      "id": "pd002",
+      "sequenceNo": 2,
+      "name": "患儿2",
+      "age": "18月",
+      "gender": "女",
+      "chiefComplaint": "哭闹、发热38.2℃、拉耳朵、流脓性鼻涕5天",
+      "history": "反复中耳炎史",
+      "allergies": "无",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 140, "bp": "90/55", "spo2": 97, "gcs": 15, "respRate": 32, "temperature": 38.2 },
+      "tags": ["急性中耳炎", "一般情况好"],
+      "correctChannel": "GREEN",
+      "reasoning": "急性中耳炎，意识清晰，无呼吸困难，仅需门诊处理。",
+      "requiredResources": [
+        { "resourceId": "antipyretic", "count": 1, "reason": "对乙酰氨基酚退热" },
+        { "resourceId": "abx-oral", "count": 1, "reason": "口服抗生素" }
+      ]
+    },
+    {
+      "id": "pd003",
+      "sequenceNo": 3,
+      "name": "患儿3",
+      "age": "4岁",
+      "gender": "男",
+      "chiefComplaint": "犬吠样咳嗽+声音嘶哑2天，吸气时喘鸣",
+      "history": "健康",
+      "allergies": "无",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 135, "bp": "95/60", "spo2": 90, "gcs": 14, "respRate": 42, "temperature": 38.0 },
+      "tags": ["哮吼(中度)", "胸骨上窝凹陷"],
+      "correctChannel": "YELLOW",
+      "reasoning": "中度喉气管炎伴胸骨上窝凹陷及SpO2<92%，需雾化+地塞米松，但无需插管。",
+      "requiredResources": [
+        { "resourceId": "nebulizer", "count": 2, "reason": "肾上腺素雾化×2" },
+        { "resourceId": "steroid", "count": 1, "reason": "地塞米松口服/肌注" },
+        { "resourceId": "oxygen", "count": 1, "reason": "面罩吸氧" }
+      ]
+    },
+    {
+      "id": "pd004",
+      "sequenceNo": 4,
+      "name": "患儿4",
+      "age": "8岁",
+      "gender": "女",
+      "chiefComplaint": "哮喘急性发作，雾化2次无缓解，说话只能单字",
+      "history": "中重度持续性哮喘",
+      "allergies": "花粉、花生",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 155, "bp": "105/65", "spo2": 85, "gcs": 13, "respRate": 48, "temperature": 36.7 },
+      "tags": ["危重哮喘", "沉默胸？"],
+      "correctChannel": "RED",
+      "reasoning": "严重哮喘发作，言语受限+SpO2<90%+呼吸疲劳+雾化无效，需紧急呼吸支持。",
+      "requiredResources": [
+        { "resourceId": "nebulizer", "count": 3, "reason": "连续沙丁胺醇+异丙托雾化" },
+        { "resourceId": "oxygen-hi", "count": 1, "reason": "高流量氧疗" },
+        { "resourceId": "steroid-iv", "count": 1, "reason": "甲泼尼龙静推" },
+        { "resourceId": "airway-kit", "count": 1, "reason": "备插管" }
+      ]
+    },
+    {
+      "id": "pd005",
+      "sequenceNo": 5,
+      "name": "患儿5",
+      "age": "10岁",
+      "gender": "男",
+      "chiefComplaint": "课间踢足球摔倒，右手撑地后右腕畸形、肿胀、压痛",
+      "history": "健康",
+      "allergies": "无",
+      "injuryMechanism": "运动伤（伸展位撑地）",
+      "vitalSigns": { "hr": 95, "bp": "110/68", "spo2": 99, "gcs": 15, "respRate": 20, "temperature": 36.5 },
+      "tags": ["Colles骨折疑似"],
+      "correctChannel": "GREEN",
+      "reasoning": "单纯上肢骨折（无开放、无神经血管损伤征象），生命体征完全正常。",
+      "requiredResources": [
+        { "resourceId": "splint", "count": 1, "reason": "腕部临时夹板" },
+        { "resourceId": "analgesia", "count": 1, "reason": "口服镇痛" }
+      ]
+    },
+    {
+      "id": "pd006",
+      "sequenceNo": 6,
+      "name": "患儿6",
+      "age": "2岁",
+      "gender": "男",
+      "chiefComplaint": "误吞花生米后剧烈呛咳，现呼吸急促面色青紫",
+      "history": "健康",
+      "allergies": "无",
+      "injuryMechanism": "吸入异物",
+      "vitalSigns": { "hr": 170, "bp": "85/50", "spo2": 78, "gcs": 10, "respRate": 55, "temperature": 36.8 },
+      "tags": ["气道异物", "严重缺氧"],
+      "correctChannel": "RED",
+      "reasoning": "明确异物吸入史+严重低氧血症+意识改变，需紧急支气管镜取异物。",
+      "requiredResources": [
+        { "resourceId": "oxygen-hi", "count": 1, "reason": "纯氧面罩" },
+        { "resourceId": "airway-kit", "count": 1, "reason": "紧急气道/支气管镜准备" },
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路" }
+      ]
+    },
+    {
+      "id": "pd007",
+      "sequenceNo": 7,
+      "name": "患儿7",
+      "age": "5岁",
+      "gender": "女",
+      "chiefComplaint": "呕吐腹泻2天，尿量减少，精神差但可唤醒",
+      "history": "健康",
+      "allergies": "牛奶蛋白过敏",
+      "injuryMechanism": "无",
+      "vitalSigns": { "hr": 145, "bp": "88/52", "spo2": 96, "gcs": 13, "respRate": 30, "temperature": 37.8 },
+      "tags": ["中度脱水", "急性胃肠炎"],
+      "correctChannel": "YELLOW",
+      "reasoning": "中度脱水体征（心动过速+尿量↓+精神改变），需静脉补液，但未休克。",
+      "requiredResources": [
+        { "resourceId": "iv", "count": 1, "reason": "静脉通路+20ml/kg补液" },
+        { "resourceId": "antipyretic", "count": 1, "reason": "退热" }
+      ]
+    },
+    {
+      "id": "pd008",
+      "sequenceNo": 8,
+      "name": "患儿8",
+      "age": "14岁",
+      "gender": "女",
+      "chiefComplaint": "父母发现割腕，伤口较浅约3cm长，出血已止，情绪激动",
+      "history": "抑郁症服药中（舍曲林）",
+      "allergies": "无",
+      "injuryMechanism": "自残",
+      "vitalSigns": { "hr": 105, "bp": "115/75", "spo2": 99, "gcs": 15, "respRate": 22, "temperature": 36.6 },
+      "tags": ["自伤", "浅表伤口", "精神科急会诊"],
+      "correctChannel": "YELLOW",
+      "reasoning": "浅表伤口无活动性出血，但存在自伤行为+抑郁史，需精神科评估，医学稳定。",
+      "requiredResources": [
+        { "resourceId": "dressing", "count": 1, "reason": "伤口清洁包扎" },
+        { "resourceId": "psych-consult", "count": 1, "reason": "精神科急会诊" }
+      ]
+    }
+  ],
+  "resourceSlots": [
+    { "id": "oxygen", "name": "普通吸氧", "icon": "Wind", "initialCount": 4, "description": "鼻导管/面罩", "consumable": false },
+    { "id": "oxygen-hi", "name": "高流量氧疗", "icon": "Wind", "initialCount": 2, "description": "儿童专用高流量湿化氧", "consumable": false },
+    { "id": "iv", "name": "儿童静脉通路", "icon": "Syringe", "initialCount": 8, "description": "22-24G留置针", "consumable": true },
+    { "id": "abx", "name": "静脉抗生素", "icon": "Pill", "initialCount": 4, "description": "头孢曲松/氨苄西林等", "consumable": true },
+    { "id": "abx-oral", "name": "口服抗生素", "icon": "Tablets", "initialCount": 6, "description": "阿莫西林克拉维酸", "consumable": true },
+    { "id": "antipyretic", "name": "退热药物", "icon": "Thermometer", "initialCount": 10, "description": "对乙酰氨基酚/布洛芬混悬液", "consumable": true },
+    { "id": "analgesia", "name": "镇痛药物", "icon": "Tablets", "initialCount": 6, "description": "布洛芬/对乙酰氨基酚", "consumable": true },
+    { "id": "nebulizer", "name": "雾化器(次)", "icon": "CloudFog", "initialCount": 8, "description": "含雾化液+面罩", "consumable": true },
+    { "id": "steroid", "name": "口服激素", "icon": "Pill", "initialCount": 4, "description": "地塞米松口服", "consumable": true },
+    { "id": "steroid-iv", "name": "静脉激素", "icon": "Syringe", "initialCount": 3, "description": "甲泼尼龙静推", "consumable": true },
+    { "id": "splint", "name": "夹板/支具", "icon": "Bandage", "initialCount": 4, "description": "临时外固定", "consumable": false },
+    { "id": "dressing", "name": "伤口敷料", "icon": "Bandage", "initialCount": 6, "description": "消毒+包扎套装", "consumable": true },
+    { "id": "lp-kit", "name": "腰穿套装", "icon": "Syringe", "initialCount": 2, "description": "小儿腰椎穿刺针+测压管", "consumable": true },
+    { "id": "airway-kit", "name": "困难气道包", "icon": "Wind", "initialCount": 1, "description": "小儿可视喉镜+各型号插管", "consumable": true },
+    { "id": "psych-consult", "name": "精神科会诊", "icon": "MessageCircle", "initialCount": 2, "description": "精神科医生紧急会诊名额", "consumable": false }
+  ],
+  "scoringRules": {
+    "correctScore": 100,
+    "channelWrongPenalty": 65,
+    "severityMismatchPenalty": 32,
+    "resourceMissPenalty": 11,
+    "resourceOverusePenalty": 9,
+    "timeoutPenaltyPerSec": 0.6,
+    "pausePenalty": 2,
+    "perfectChannelBonus": 70,
+    "resourceEfficiencyBonus": 45
+  }
+}
