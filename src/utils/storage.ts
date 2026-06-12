@@ -3,6 +3,7 @@ import type {
   GameSession,
   InProgressSave,
   ScoreResult,
+  ResourceAssignment,
 } from '../types';
 import { STORAGE_KEYS, MAX_HISTORY } from '../types';
 
@@ -25,12 +26,22 @@ const write = <T>(key: string, value: T) => {
   }
 };
 
+function normalizeSession(s: GameSession): GameSession {
+  const legacy = !Array.isArray(s.resourceAssignments);
+  return {
+    ...s,
+    resourceAssignments: (s.resourceAssignments as ResourceAssignment[] | undefined) ?? [],
+    resourceUsage: s.resourceUsage ?? {},
+    legacySave: legacy,
+  };
+}
+
 export function saveInProgress(levelId: string, session: GameSession) {
   const payload: InProgressSave = {
     version: STORAGE_KEYS.STORAGE_VERSION,
     savedAt: Date.now(),
     levelId,
-    session: { ...session, savedAt: Date.now() },
+    session: { ...normalizeSession(session), savedAt: Date.now() },
   };
   write(STORAGE_KEYS.IN_PROGRESS, payload);
 }
@@ -40,6 +51,7 @@ export function loadInProgress(): InProgressSave | null {
   if (!raw) return null;
   if (raw.version !== STORAGE_KEYS.STORAGE_VERSION) return null;
   if (!raw.session || !raw.levelId) return null;
+  raw.session = normalizeSession(raw.session);
   return raw;
 }
 
@@ -50,7 +62,9 @@ export function clearInProgress() {
 export function loadHistory(): GameRecord[] {
   const arr = read<GameRecord[]>(STORAGE_KEYS.HISTORY, []);
   if (!Array.isArray(arr)) return [];
-  return arr.sort((a, b) => b.createdAt - a.createdAt);
+  return arr
+    .map((r) => (r.sessionSnapshot ? { ...r, sessionSnapshot: normalizeSession(r.sessionSnapshot) } : r))
+    .sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export function appendHistory(record: GameRecord): GameRecord[] {

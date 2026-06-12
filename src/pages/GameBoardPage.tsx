@@ -171,6 +171,11 @@ export default function GameBoardPage() {
                     onUse={() => useResource(slot.id)}
                     onReturn={() => returnResource(slot.id)}
                     disabled={locked}
+                    assignments={session.resourceAssignments}
+                    patientNames={Object.fromEntries(
+                      level.patients.map((p) => [p.id, `${p.sequenceNo}号·${p.name}`])
+                    )}
+                    selectedPatientId={session.selectedPatientId}
                   />
                 ))}
               </div>

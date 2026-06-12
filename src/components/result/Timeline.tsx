@@ -51,12 +51,18 @@ export function Timeline({ logs, startTime, patientNames, resourceNames }: Timel
           const isLast = idx === logs.length - 1;
 
           let content = log.note || '';
-          if (log.patientId && !content) {
+          if (!content && (log.type === 'RESOURCE_USE' || log.type === 'RESOURCE_RETURN')) {
+            const parts: string[] = [];
+            if (log.patientId) parts.push(`患者 ${patientNames[log.patientId] ?? log.patientId}`);
+            if (log.resourceId) parts.push(`资源：${resourceNames[log.resourceId] ?? log.resourceId}`);
+            content = parts.join(' · ');
+          }
+          if (!content && log.patientId) {
             content = `患者 ${patientNames[log.patientId] ?? log.patientId}`;
             if (log.fromChannel) content += ` · ${CHANNEL_SHORT[log.fromChannel]} →`;
             if (log.toChannel) content += ` ${CHANNEL_SHORT[log.toChannel]}`;
           }
-          if (log.resourceId && !content) {
+          if (!content && log.resourceId) {
             content = `资源：${resourceNames[log.resourceId] ?? log.resourceId}`;
           }
 

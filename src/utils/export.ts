@@ -87,10 +87,22 @@ export function exportReplayTXT(
     }
   }
   lines.push('');
-  lines.push('---------- 资源使用 ----------');
+  lines.push('---------- 资源使用明细 ----------');
   for (const slot of level.resourceSlots) {
     const used = s.resourceUsage[slot.id] ?? 0;
-    lines.push(`· ${slot.name}: ${used}/${slot.initialCount}${slot.consumable ? '（消耗型）' : ''}`);
+    lines.push(`· ${slot.name} (${slot.id}): ${used}/${slot.initialCount}${slot.consumable ? '（消耗型）' : ''}`);
+  }
+  if (Array.isArray(s.resourceAssignments) && s.resourceAssignments.length > 0) {
+    lines.push('');
+    lines.push('--- 资源-患者绑定表 ---');
+    const patientName = (id: string) => {
+      const p = level.patients.find((x) => x.id === id);
+      return p ? `${p.sequenceNo}号·${p.name}` : id;
+    };
+    for (const a of s.resourceAssignments) {
+      const status = a.returnedAt ? `（已归还 ${formatTime(Math.floor((a.returnedAt - s.startTime) / 1000))}）` : '（在用）';
+      lines.push(`  [${formatTime(Math.floor((a.assignedAt - s.startTime) / 1000))}] ${patientName(a.patientId)} ← ${level.resourceSlots.find((r) => r.id === a.resourceId)?.name ?? a.resourceId} ${status}`);
+    }
   }
   lines.push('');
   lines.push('---------- 操作时间线 ----------');
@@ -101,6 +113,7 @@ export function exportReplayTXT(
     if (log.fromChannel) extra.push(`from=${log.fromChannel}`);
     if (log.toChannel) extra.push(`to=${log.toChannel}`);
     if (log.resourceId) extra.push(`资源=${log.resourceId}`);
+    if (log.resourceAssignmentId) extra.push(`资源单=${log.resourceAssignmentId}`);
     if (log.note) extra.push(log.note);
     lines.push(`[${t}] ${log.type}  ${extra.join(' ')}`);
   }

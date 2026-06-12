@@ -2,9 +2,9 @@ import React from 'react';
 import {
   Activity, Wind, Pill, Syringe, Tablets, Bandage, Shield, Scan,
   Thermometer, Zap, ArrowRightLeft, Droplet, Bone, LayoutGrid, CloudFog,
-  MessageCircle, Package,
+  MessageCircle, Package, User,
 } from 'lucide-react';
-import type { ResourceSlot } from '../../types';
+import type { ResourceSlot, ResourceAssignment } from '../../types';
 import { classNames } from '../../utils/uuid';
 
 interface ResourceSlotCardProps {
@@ -13,6 +13,9 @@ interface ResourceSlotCardProps {
   onUse: () => void;
   onReturn: () => void;
   disabled?: boolean;
+  assignments?: ResourceAssignment[];
+  patientNames?: Record<string, string>;
+  selectedPatientId?: string | null;
 }
 
 const iconMap: Record<string, React.ComponentType<any>> = {
@@ -21,16 +24,25 @@ const iconMap: Record<string, React.ComponentType<any>> = {
   MessageCircle, Package,
 };
 
-export function ResourceSlotCard({ slot, remaining, onUse, onReturn, disabled }: ResourceSlotCardProps) {
+export function ResourceSlotCard({
+  slot, remaining, onUse, onReturn, disabled,
+  assignments = [], patientNames = {}, selectedPatientId,
+}: ResourceSlotCardProps) {
   const Icon = iconMap[slot.icon] ?? Package;
   const depleted = remaining <= 0;
   const low = remaining > 0 && remaining <= Math.ceil(slot.initialCount * 0.3);
+
+  const activeAssignments = assignments.filter((a) => a.resourceId === slot.id && !a.returnedAt);
+  const selectedHasActive = selectedPatientId
+    ? activeAssignments.some((a) => a.patientId === selectedPatientId)
+    : false;
 
   return (
     <div
       className={classNames(
         'card-tight p-3 flex flex-col gap-2 transition-all duration-200 group',
         depleted && 'opacity-60 bg-slate-50',
+        selectedHasActive && 'ring-2 ring-sky-400 bg-sky-50',
         !disabled && !depleted && 'hover:shadow-md hover:-translate-y-0.5'
       )}
     >
@@ -69,6 +81,27 @@ export function ResourceSlotCard({ slot, remaining, onUse, onReturn, disabled }:
               <span className="ml-1 text-rose-500">（消耗型）</span>
             )}
           </div>
+          {activeAssignments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {activeAssignments.slice(0, 3).map((a) => (
+                <span
+                  key={a.id}
+                  className={classNames(
+                    'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded',
+                    a.patientId === selectedPatientId
+                      ? 'bg-sky-100 text-sky-700 border border-sky-300 font-medium'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  )}
+                >
+                  <User size={10} />
+                  {patientNames[a.patientId] ?? a.patientId}
+                </span>
+              ))}
+              {activeAssignments.length > 3 && (
+                <span className="text-[10px] text-slate-400 px-1">+{activeAssignments.length - 3}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -82,8 +115,9 @@ export function ResourceSlotCard({ slot, remaining, onUse, onReturn, disabled }:
               ? 'bg-sky-600 text-white hover:bg-sky-700 active:scale-[0.98]'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
           )}
+          title={selectedPatientId ? `为当前选中患者消耗 1 份${slot.name}` : `消耗 1 份${slot.name}（请先选中患者）`}
         >
-          消耗 1
+          {selectedPatientId ? `为选中患者消耗 1` : `消耗 1`}
         </button>
         <button
           onClick={onReturn}
@@ -94,7 +128,7 @@ export function ResourceSlotCard({ slot, remaining, onUse, onReturn, disabled }:
               ? 'bg-slate-100 text-slate-600 hover:bg-slate-200 active:scale-[0.98]'
               : 'bg-slate-100 text-slate-300 cursor-not-allowed'
           )}
-          title={slot.consumable ? '消耗型资源归还后可重新使用' : '归还资源'}
+          title={selectedPatientId ? `从当前选中患者归还${slot.name}` : `归还${slot.name}（请先选中患者）`}
         >
           归还
         </button>

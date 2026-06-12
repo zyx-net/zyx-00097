@@ -9,6 +9,7 @@ import type {
   GameStatus,
   ScoreResult,
   GameRecord,
+  ResourceAssignment,
 } from '../types';
 import { generateUUID } from '../utils/uuid';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../validators/runtimeValidator';
 import { saveInProgress, clearInProgress, appendHistory, loadInProgress, adjustSessionForResume } from '../utils/storage';
 import { calculateScore } from '../utils/scoring';
+import { ERROR_CODES, ERROR_MESSAGES } from '../types';
 
 type MutationFn = (state: GameStoreState) => Partial<GameStoreState> | void;
 
@@ -65,6 +67,7 @@ const emptySession = (): GameSession => ({
   selectedPatientId: null,
   assignments: {},
   resourceUsage: {},
+  resourceAssignments: [],
   operationLog: [],
   errors: [],
 });
@@ -141,6 +144,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       selectedPatientId: level.patients[0]?.id ?? null,
       assignments,
       resourceUsage,
+      resourceAssignments: [],
       operationLog: [{ timestamp: now, type: 'SELECT_PATIENT', patientId: level.patients[0]?.id ?? null, note: '初始选择' }],
       errors: [],
     };
@@ -303,10 +307,27 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   useResource: (resourceId) => {
     const { session, level } = get();
     if (!session || !level) return { ok: false };
+    if (!session.selectedPatientId) {
+      const e: ErrorRecord = {
+        code: ERROR_CODES.E_NO_PATIENT_SELECTED,
+        message: ERROR_MESSAGES[ERROR_CODES.E_NO_PATIENT_SELECTED].message,
+        suggestion: ERROR_MESSAGES[ERROR_CODES.E_NO_PATIENT_SELECTED].suggestion,
+        timestamp: Date.now(),
+        resourceId,
+      };
+      set({
+        session: addError(session, e),
+        lastError: e,
+      });
+      return { ok: false, error: e };
+    }
+    const patientId = session.selectedPatientId;
+    const pCheck = checkPatientExists(level, patientId);
     const checks = [
       checkStatusAllowsMutation(session.status),
       checkResourceExists(level, resourceId),
       checkResourceAvailable(level, session.resourceUsage, resourceId),
+      ...(pCheck.ok ? [] : [pCheck]),
     ];
     for (const c of checks) {
       if (!c.ok && c.error) {
@@ -317,14 +338,27 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         return { ok: false, error: c.error };
       }
     }
+    const now = Date.now();
+    const assignment: ResourceAssignment = {
+      id: generateUUID(),
+      patientId,
+      resourceId,
+      assignedAt: now,
+    };
     const usage = {
       ...session.resourceUsage,
       [resourceId]: (session.resourceUsage[resourceId] ?? 0) + 1,
     };
+    const patient = level.patients.find((p) => p.id === patientId);
     const updated: GameSession = addLog(
-      { ...session, resourceUsage: usage },
+      { ...session, resourceUsage: usage, resourceAssignments: [...session.resourceAssignments, assignment] },
       'RESOURCE_USE',
-      { resourceId }
+      {
+        patientId,
+        resourceId,
+        resourceAssignmentId: assignment.id,
+        note: patient ? `为 ${patient.sequenceNo}号·${patient.name} 分配` : undefined,
+      }
     );
     set({ session: updated, lastError: null });
     saveInProgress(level.id, updated);
@@ -334,10 +368,25 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   returnResource: (resourceId) => {
     const { session, level } = get();
     if (!session || !level) return { ok: false };
+    if (!session.selectedPatientId) {
+      const e: ErrorRecord = {
+        code: ERROR_CODES.E_NO_PATIENT_SELECTED,
+        message: ERROR_MESSAGES[ERROR_CODES.E_NO_PATIENT_SELECTED].message,
+        suggestion: ERROR_MESSAGES[ERROR_CODES.E_NO_PATIENT_SELECTED].suggestion,
+        timestamp: Date.now(),
+        resourceId,
+      };
+      set({
+        session: addError(session, e),
+        lastError: e,
+      });
+      return { ok: false, error: e };
+    }
+    const patientId = session.selectedPatientId;
     const checks = [
       checkStatusAllowsMutation(session.status),
       checkResourceExists(level, resourceId),
-      checkResourceCanReturn(level, session.resourceUsage, resourceId),
+      checkPatientExists(level, patientId),
     ];
     for (const c of checks) {
       if (!c.ok && c.error) {
@@ -348,14 +397,43 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         return { ok: false, error: c.error };
       }
     }
+    const now = Date.now();
+    const lastIndex = [...session.resourceAssignments]
+      .map((a, i) => ({ a, i }))
+      .reverse()
+      .find(({ a }) => a.patientId === patientId && a.resourceId === resourceId && !a.returnedAt);
+    if (!lastIndex) {
+      const e: ErrorRecord = {
+        code: ERROR_CODES.E_RESOURCE_NOT_USED,
+        message: `该患者未分配过此资源`,
+        suggestion: '请先为该患者分配资源再归还',
+        timestamp: now,
+        patientId,
+        resourceId,
+      };
+      set({
+        session: addError(session, e),
+        lastError: e,
+      });
+      return { ok: false, error: e };
+    }
+    const updatedAssignments = session.resourceAssignments.map((a, idx) =>
+      idx === lastIndex.i ? { ...a, returnedAt: now } : a
+    );
     const usage = {
       ...session.resourceUsage,
       [resourceId]: Math.max(0, (session.resourceUsage[resourceId] ?? 0) - 1),
     };
+    const patient = level.patients.find((p) => p.id === patientId);
     const updated: GameSession = addLog(
-      { ...session, resourceUsage: usage },
+      { ...session, resourceUsage: usage, resourceAssignments: updatedAssignments },
       'RESOURCE_RETURN',
-      { resourceId }
+      {
+        patientId,
+        resourceId,
+        resourceAssignmentId: lastIndex.a.id,
+        note: patient ? `从 ${patient.sequenceNo}号·${patient.name} 归还` : undefined,
+      }
     );
     set({ session: updated, lastError: null });
     saveInProgress(level.id, updated);

@@ -91,6 +91,14 @@ export interface ResourceSlot {
   consumable: boolean;
 }
 
+export interface ResourceAssignment {
+  id: string;
+  patientId: string;
+  resourceId: string;
+  assignedAt: number;
+  returnedAt?: number;
+}
+
 export interface ScoringRules {
   correctScore: number;
   channelWrongPenalty: number;
@@ -122,6 +130,7 @@ export interface ActionLog {
   fromChannel?: Channel | null;
   toChannel?: Channel | null;
   resourceId?: string;
+  resourceAssignmentId?: string;
   note?: string;
 }
 
@@ -148,9 +157,11 @@ export interface GameSession {
   selectedPatientId: string | null;
   assignments: Record<string, Channel | null>;
   resourceUsage: Record<string, number>;
+  resourceAssignments: ResourceAssignment[];
   operationLog: ActionLog[];
   errors: ErrorRecord[];
   savedAt?: number;
+  legacySave?: boolean;
 }
 
 export interface ScoringDetail {
@@ -217,6 +228,7 @@ export const ERROR_CODES = {
   E_RESOURCE_NOT_USED: 'E_RESOURCE_NOT_USED',
   E_INVALID_CONFIG: 'E_INVALID_CONFIG',
   E_CONFIG_NOT_FOUND: 'E_CONFIG_NOT_FOUND',
+  E_NO_PATIENT_SELECTED: 'E_NO_PATIENT_SELECTED',
 } as const;
 
 export const ERROR_MESSAGES: Record<string, { message: string; suggestion: string }> = {
@@ -255,5 +267,9 @@ export const ERROR_MESSAGES: Record<string, { message: string; suggestion: strin
   [ERROR_CODES.E_CONFIG_NOT_FOUND]: {
     message: '关卡配置不存在',
     suggestion: '请返回首页选择其他关卡',
+  },
+  [ERROR_CODES.E_NO_PATIENT_SELECTED]: {
+    message: '请先选择患者再操作资源',
+    suggestion: '点击左侧患者队列选择一名患者后，再为其分配或归还资源',
   },
 };

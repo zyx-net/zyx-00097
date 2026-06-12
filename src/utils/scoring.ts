@@ -1,14 +1,62 @@
-import type { Level, GameSession, ScoreResult, ScoringDetail, Channel } from '../types';
+import type { Level, GameSession, ScoreResult, ScoringDetail, Channel, ResourceAssignment } from '../types';
 import { CHANNEL_ORDER } from '../types';
 import { severityDistance } from '../validators/runtimeValidator';
 import { round2 } from './uuid';
 
 type ProofInput = { ruleKey: string; input: unknown; output: number };
 
+function resourceUsageByPatient(
+  assignments: ResourceAssignment[]
+): Record<string, Record<string, number>> {
+  const result: Record<string, Record<string, number>> = {};
+  for (const a of assignments) {
+    if (a.returnedAt) continue;
+    if (!result[a.patientId]) result[a.patientId] = {};
+    result[a.patientId][a.resourceId] = (result[a.patientId][a.resourceId] ?? 0) + 1;
+  }
+  return result;
+}
+
+function legacyUsageByPatientFallback(
+  level: Level,
+  resourceUsage: Record<string, number>
+): Record<string, Record<string, number>> {
+  const remaining: Record<string, number> = { ...resourceUsage };
+  const result: Record<string, Record<string, number>> = {};
+  for (const p of level.patients) {
+    result[p.id] = {};
+    for (const req of p.requiredResources) {
+      const needed = req.count;
+      const avail = remaining[req.resourceId] ?? 0;
+      const take = Math.min(needed, avail);
+      if (take > 0) {
+        result[p.id][req.resourceId] = take;
+        remaining[req.resourceId] = avail - take;
+      }
+    }
+  }
+  return result;
+}
+
 export function calculateScore(level: Level, session: GameSession): ScoreResult {
   const rules = level.scoringRules;
   const proofs: ProofInput[] = [];
   const details: ScoringDetail[] = [];
+
+  const hasModernAssignments = Array.isArray(session.resourceAssignments) && session.resourceAssignments.length > 0;
+  const byPatient = hasModernAssignments
+    ? resourceUsageByPatient(session.resourceAssignments)
+    : legacyUsageByPatientFallback(level, session.resourceUsage);
+
+  proofs.push({
+    ruleKey: 'resourceTrackingMode',
+    input: {
+      hasModernAssignments,
+      totalAssignments: session.resourceAssignments?.length ?? 0,
+      legacyUsage: session.resourceUsage,
+    },
+    output: hasModernAssignments ? 1 : 0,
+  });
 
   let patientTotal = 0;
   let correctCount = 0;
@@ -57,8 +105,9 @@ export function calculateScore(level: Level, session: GameSession): ScoreResult 
       }
     }
 
+    const usedForPatient = byPatient[patient.id] ?? {};
     for (const req of patient.requiredResources) {
-      const used = session.resourceUsage[req.resourceId] ?? 0;
+      const used = usedForPatient[req.resourceId] ?? 0;
       if (used < req.count) {
         const miss = req.count - used;
         const p = rules.resourceMissPenalty * miss;
@@ -66,11 +115,16 @@ export function calculateScore(level: Level, session: GameSession): ScoreResult 
         penalties.push({
           type: 'resourceMissPenalty',
           amount: p,
-          reason: `资源「${req.resourceId}」未足量（缺 ${miss}）`,
+          reason: `资源「${req.resourceId}」未足量（该患者实际分配 ${used}，缺 ${miss}）`,
         });
         proofs.push({
           ruleKey: 'resourceMissPenalty',
-          input: { patientId: patient.id, resourceId: req.resourceId, required: req.count, used },
+          input: {
+            patientId: patient.id,
+            resourceId: req.resourceId,
+            required: req.count,
+            usedForPatient: used,
+          },
           output: -p,
         });
       } else if (used > req.count) {
@@ -82,11 +136,16 @@ export function calculateScore(level: Level, session: GameSession): ScoreResult 
           penalties.push({
             type: 'resourceOverusePenalty',
             amount: p,
-            reason: `消耗型资源「${req.resourceId}」过量（多用 ${over}）`,
+            reason: `消耗型资源「${req.resourceId}」过量（该患者多用 ${over}）`,
           });
           proofs.push({
             ruleKey: 'resourceOverusePenalty',
-            input: { patientId: patient.id, resourceId: req.resourceId, required: req.count, used },
+            input: {
+              patientId: patient.id,
+              resourceId: req.resourceId,
+              required: req.count,
+              usedForPatient: used,
+            },
             output: -p,
           });
         }
@@ -154,8 +213,12 @@ export function calculateScore(level: Level, session: GameSession): ScoreResult 
         totalNeeded += req.count;
       }
     }
-    for (const id of Object.keys(session.resourceUsage)) {
-      totalUsed += session.resourceUsage[id] ?? 0;
+    if (hasModernAssignments) {
+      totalUsed = session.resourceAssignments.filter((a) => !a.returnedAt).length;
+    } else {
+      for (const id of Object.keys(session.resourceUsage)) {
+        totalUsed += session.resourceUsage[id] ?? 0;
+      }
     }
     if (totalNeeded > 0) {
       const ratio = 1 - Math.abs(totalUsed - totalNeeded) / (totalNeeded * 2);
